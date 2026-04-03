@@ -37,9 +37,14 @@ function normalizeOpenAICodexTransport(params: {
     useCodexTransport && params.model.api === "openai-responses"
       ? ("openai-codex-responses" as const)
       : params.model.api;
+  // Preserve custom baseUrl (e.g. AgentWeave proxy) — only default to
+  // chatgpt.com/backend-api when baseUrl is empty or standard OpenAI.
+  const hasCustomBaseUrl =
+    params.model.baseUrl &&
+    !isOpenAIApiBaseUrl(params.model.baseUrl) &&
+    !isOpenAICodexBaseUrl(params.model.baseUrl);
   const nextBaseUrl =
-    nextApi === "openai-codex-responses" &&
-    (!params.model.baseUrl || isOpenAIApiBaseUrl(params.model.baseUrl))
+    nextApi === "openai-codex-responses" && !hasCustomBaseUrl
       ? OPENAI_CODEX_BASE_URL
       : params.model.baseUrl;
 
