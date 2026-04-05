@@ -2,17 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import type { NormalizedUsage, UsageLike } from "../agents/usage.js";
-import { normalizeUsage } from "../agents/usage.js";
-import { stripInboundMetadata } from "../auto-reply/reply/strip-inbound-meta.js";
 import type { OpenClawConfig } from "../config/config.js";
-import {
-  resolveSessionFilePath,
-  resolveSessionTranscriptsDirForAgent,
-} from "../config/sessions/paths.js";
 import type { SessionEntry } from "../config/sessions/types.js";
-import { stripEnvelope, stripMessageIdHints } from "../shared/chat-envelope.js";
-import { countToolResults, extractToolCallNames } from "../utils/transcript-tools.js";
-import { estimateUsageCost, resolveModelCostConfig } from "../utils/usage-format.js";
 import type {
   CostBreakdown,
   CostUsageTotals,
@@ -33,6 +24,15 @@ import type {
   SessionUsageTimePoint,
   SessionUsageTimeSeries,
 } from "./session-cost-usage.types.js";
+import { normalizeUsage } from "../agents/usage.js";
+import { stripInboundMetadata } from "../auto-reply/reply/strip-inbound-meta.js";
+import {
+  resolveSessionFilePath,
+  resolveSessionTranscriptsDirForAgent,
+} from "../config/sessions/paths.js";
+import { stripEnvelope, stripMessageIdHints } from "../shared/chat-envelope.js";
+import { countToolResults, extractToolCallNames } from "../utils/transcript-tools.js";
+import { estimateUsageCost, resolveModelCostConfig } from "../utils/usage-format.js";
 
 export type {
   CostUsageDailyEntry,
@@ -287,6 +287,26 @@ async function scanUsageFile(params: {
   });
 }
 
+const resolveAgentIdsForCostSummary = (params?: {
+  config?: OpenClawConfig;
+  agentId?: string;
+}): Array<string | undefined> => {
+  if (typeof params?.agentId === "string" && params.agentId.trim()) {
+    return [params.agentId.trim()];
+  }
+
+  const configuredAgentIds = (params?.config?.agents?.list ?? [])
+    .map((agent) => (typeof agent?.id === "string" ? agent.id.trim() : ""))
+    .filter((id) => id.length > 0);
+
+  if (configuredAgentIds.length > 0) {
+    return Array.from(new Set(configuredAgentIds));
+  }
+
+  // Backward compatibility: when no explicit agent list is configured, read the default/main dir.
+  return [undefined];
+};
+
 export async function loadCostUsageSummary(params?: {
   startMs?: number;
   endMs?: number;
@@ -313,26 +333,36 @@ export async function loadCostUsageSummary(params?: {
   const dailyMap = new Map<string, CostUsageTotals>();
   const totals = emptyTotals();
 
-  const sessionsDir = resolveSessionTranscriptsDirForAgent(params?.agentId);
-  const entries = await fs.promises.readdir(sessionsDir, { withFileTypes: true }).catch(() => []);
-  const files = (
-    await Promise.all(
-      entries
-        .filter((entry) => entry.isFile() && entry.name.endsWith(".jsonl"))
-        .map(async (entry) => {
-          const filePath = path.join(sessionsDir, entry.name);
-          const stats = await fs.promises.stat(filePath).catch(() => null);
-          if (!stats) {
-            return null;
-          }
-          // Include file if it was modified after our start time
-          if (stats.mtimeMs < sinceTime) {
-            return null;
-          }
-          return filePath;
-        }),
-    )
-  ).filter((filePath): filePath is string => Boolean(filePath));
+  const files: string[] = [];
+  const agentIds = resolveAgentIdsForCostSummary({
+    config: params?.config,
+    agentId: params?.agentId,
+  });
+
+  for (const agentId of agentIds) {
+    const sessionsDir = resolveSessionTranscriptsDirForAgent(agentId);
+    const entries = await fs.promises.readdir(sessionsDir, { withFileTypes: true }).catch(() => []);
+    const agentFiles = (
+      await Promise.all(
+        entries
+          .filter((entry) => entry.isFile() && entry.name.endsWith(".jsonl"))
+          .map(async (entry) => {
+            const filePath = path.join(sessionsDir, entry.name);
+            const stats = await fs.promises.stat(filePath).catch(() => null);
+            if (!stats) {
+              return null;
+            }
+            // Include file if it was modified after our start time
+            if (stats.mtimeMs < sinceTime) {
+              return null;
+            }
+            return filePath;
+          }),
+      )
+    ).filter((filePath): filePath is string => Boolean(filePath));
+
+    files.push(...agentFiles);
+  }
 
   for (const filePath of files) {
     await scanUsageFile({
