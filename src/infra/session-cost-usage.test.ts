@@ -1087,6 +1087,60 @@ describe("session cost usage", () => {
     });
   });
 
+  it("aggregates cost usage across configured agents when agentId is omitted", async () => {
+    const root = await makeSessionCostRoot("cost-multi-agent");
+    const mainDir = path.join(root, "agents", "main", "sessions");
+    const workerDir = path.join(root, "agents", "worker", "sessions");
+    await fs.mkdir(mainDir, { recursive: true });
+    await fs.mkdir(workerDir, { recursive: true });
+
+    const timestamp = new Date().toISOString();
+
+    await fs.writeFile(
+      path.join(mainDir, "sess-main.jsonl"),
+      transcriptText("sess-main", {
+        type: "message",
+        timestamp,
+        message: {
+          role: "assistant",
+          provider: "openai",
+          model: "gpt-5.2",
+          usage: { input: 10, output: 20, totalTokens: 30, cost: { total: 0.03 } },
+        },
+      }),
+      "utf-8",
+    );
+
+    await fs.writeFile(
+      path.join(workerDir, "sess-worker.jsonl"),
+      transcriptText("sess-worker", {
+        type: "message",
+        timestamp,
+        message: {
+          role: "assistant",
+          provider: "openai",
+          model: "gpt-5.2",
+          usage: { input: 5, output: 5, totalTokens: 10, cost: { total: 0.01 } },
+        },
+      }),
+      "utf-8",
+    );
+
+    await withStateDir(root, async () => {
+      const summary = await loadCostUsageSummary({
+        days: 30,
+        config: {
+          agents: {
+            list: [{ id: "main" }, { id: "worker" }],
+          },
+        } as OpenClawConfig,
+      });
+
+      expect(summary.totals.totalTokens).toBe(40);
+      expect(summary.totals.totalCost).toBeCloseTo(0.04, 6);
+    });
+  });
+
   it("summarizes a single session file", async () => {
     const root = await makeSessionCostRoot("cost-session");
     const sessionFile = path.join(root, "session.jsonl");
