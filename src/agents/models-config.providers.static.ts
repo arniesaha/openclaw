@@ -248,6 +248,16 @@ export function buildMinimaxProvider(): ProviderConfig {
         input: ["text", "image"],
       }),
       buildMinimaxTextModel({
+        id: "MiniMax-M2.7",
+        name: "MiniMax M2.7",
+        reasoning: true,
+      }),
+      buildMinimaxTextModel({
+        id: "MiniMax-M2.7-highspeed",
+        name: "MiniMax M2.7 Highspeed",
+        reasoning: true,
+      }),
+      buildMinimaxTextModel({
         id: "MiniMax-M2.5",
         name: "MiniMax M2.5",
         reasoning: true,
@@ -272,6 +282,16 @@ export function buildMinimaxPortalProvider(): ProviderConfig {
         name: "MiniMax VL 01",
         reasoning: false,
         input: ["text", "image"],
+      }),
+      buildMinimaxTextModel({
+        id: "MiniMax-M2.7",
+        name: "MiniMax M2.7",
+        reasoning: true,
+      }),
+      buildMinimaxTextModel({
+        id: "MiniMax-M2.7-highspeed",
+        name: "MiniMax M2.7 Highspeed",
+        reasoning: true,
       }),
       buildMinimaxTextModel({
         id: MINIMAX_DEFAULT_MODEL_ID,
