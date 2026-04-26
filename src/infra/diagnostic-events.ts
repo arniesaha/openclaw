@@ -67,6 +67,7 @@ export type DiagnosticMessageQueuedEvent = DiagnosticBaseEvent & {
   channel?: string;
   source: string;
   queueDepth?: number;
+  taskLabel?: string;
 };
 
 export type DiagnosticMessageProcessedEvent = DiagnosticBaseEvent & {

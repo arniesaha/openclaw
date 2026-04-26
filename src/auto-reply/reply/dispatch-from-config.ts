@@ -1,5 +1,8 @@
-import { resolveSessionAgentId } from "../../agents/agent-scope.js";
 import type { OpenClawConfig } from "../../config/config.js";
+import type { FinalizedMsgContext } from "../templating.js";
+import type { GetReplyOptions, ReplyPayload } from "../types.js";
+import type { ReplyDispatcher, ReplyDispatchKind } from "./reply-dispatcher.js";
+import { resolveSessionAgentId } from "../../agents/agent-scope.js";
 import {
   loadSessionStore,
   resolveSessionStoreEntry,
@@ -27,12 +30,9 @@ import { resolveSendPolicy } from "../../sessions/send-policy.js";
 import { maybeApplyTtsToPayload, normalizeTtsAutoMode, resolveTtsConfig } from "../../tts/tts.js";
 import { INTERNAL_MESSAGE_CHANNEL, normalizeMessageChannel } from "../../utils/message-channel.js";
 import { getReplyFromConfig } from "../reply.js";
-import type { FinalizedMsgContext } from "../templating.js";
-import type { GetReplyOptions, ReplyPayload } from "../types.js";
 import { formatAbortReplyText, tryFastAbortFromMessage } from "./abort.js";
 import { shouldBypassAcpDispatchForCommand, tryDispatchAcpReply } from "./dispatch-acp.js";
 import { shouldSkipDuplicateInbound } from "./inbound-dedupe.js";
-import type { ReplyDispatcher, ReplyDispatchKind } from "./reply-dispatcher.js";
 import { shouldSuppressReasoningPayload } from "./reply-payloads.js";
 import { isRoutableChannel, routeReply } from "./route-reply.js";
 import { resolveRunTypingPolicy } from "./typing-policy.js";
@@ -146,7 +146,16 @@ export async function dispatchReplyFromConfig(params: {
     if (!canTrackSession || !sessionKey) {
       return;
     }
-    logMessageQueued({ sessionKey, channel, source: "dispatch" });
+    const labelBody =
+      typeof ctx.BodyForCommands === "string"
+        ? ctx.BodyForCommands
+        : typeof ctx.CommandBody === "string"
+          ? ctx.CommandBody
+          : typeof ctx.Body === "string"
+            ? ctx.Body
+            : "";
+    const taskLabel = labelBody.trim().slice(0, 100) || undefined;
+    logMessageQueued({ sessionKey, channel, source: "dispatch", taskLabel });
     logSessionStateChange({
       sessionKey,
       state: "processing",

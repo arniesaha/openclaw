@@ -44,7 +44,11 @@ export function queueEmbeddedPiMessage(sessionId: string, text: string): boolean
     diag.debug(`queue message failed: sessionId=${sessionId} reason=compacting`);
     return false;
   }
-  logMessageQueued({ sessionId, source: "pi-embedded-runner" });
+  logMessageQueued({
+    sessionId,
+    source: "pi-embedded-runner",
+    taskLabel: text.trim().slice(0, 100) || undefined,
+  });
   void handle.queueMessage(text);
   return true;
 }

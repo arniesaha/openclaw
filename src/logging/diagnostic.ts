@@ -1,5 +1,5 @@
-import { loadConfig } from "../config/config.js";
 import type { OpenClawConfig } from "../config/config.js";
+import { loadConfig } from "../config/config.js";
 import { emitDiagnosticEvent } from "../infra/diagnostic-events.js";
 import {
   diagnosticSessionStates,
@@ -126,6 +126,7 @@ export function logMessageQueued(params: {
   sessionKey?: string;
   channel?: string;
   source: string;
+  taskLabel?: string;
 }) {
   const state = getDiagnosticSessionState(params);
   state.queueDepth += 1;
@@ -144,6 +145,7 @@ export function logMessageQueued(params: {
     channel: params.channel,
     source: params.source,
     queueDepth: state.queueDepth,
+    taskLabel: params.taskLabel,
   });
   markActivity();
 }
