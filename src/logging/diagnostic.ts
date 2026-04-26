@@ -413,6 +413,7 @@ export function logMessageQueued(params: {
   sessionKey?: string;
   channel?: string;
   source: string;
+  taskLabel?: string;
 }) {
   if (!areDiagnosticsEnabledForProcess()) {
     return;
@@ -434,6 +435,7 @@ export function logMessageQueued(params: {
     channel: params.channel,
     source: params.source,
     queueDepth: state.queueDepth,
+    taskLabel: params.taskLabel,
   });
   markActivity();
 }

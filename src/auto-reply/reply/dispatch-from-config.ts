@@ -328,7 +328,16 @@ export async function dispatchReplyFromConfig(
     if (!canTrackSession || !sessionKey) {
       return;
     }
-    logMessageQueued({ sessionKey, channel, source: "dispatch" });
+    const labelBody =
+      typeof ctx.BodyForCommands === "string"
+        ? ctx.BodyForCommands
+        : typeof ctx.CommandBody === "string"
+          ? ctx.CommandBody
+          : typeof ctx.Body === "string"
+            ? ctx.Body
+            : "";
+    const taskLabel = labelBody.trim().slice(0, 100) || undefined;
+    logMessageQueued({ sessionKey, channel, source: "dispatch", taskLabel });
     logSessionStateChange({
       sessionKey,
       state: "processing",
