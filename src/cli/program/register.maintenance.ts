@@ -25,6 +25,12 @@ export function registerMaintenanceCommands(program: Command) {
     .option("--non-interactive", "Run without prompts (safe migrations only)", false)
     .option("--generate-gateway-token", "Generate and configure a gateway token", false)
     .option("--deep", "Scan system services for extra gateway installs", false)
+    .option(
+      "--post-upgrade",
+      "Emit plugin-compat findings only (machine-readable with --json)",
+      false,
+    )
+    .option("--json", "Emit machine-readable JSON output (only honored with --post-upgrade)", false)
     .action(async (opts) => {
       await runCommandWithRuntime(defaultRuntime, async () => {
         await doctorCommand(defaultRuntime, {
@@ -35,6 +41,8 @@ export function registerMaintenanceCommands(program: Command) {
           nonInteractive: Boolean(opts.nonInteractive),
           generateGatewayToken: Boolean(opts.generateGatewayToken),
           deep: Boolean(opts.deep),
+          postUpgrade: Boolean(opts.postUpgrade),
+          json: Boolean(opts.json),
         });
         defaultRuntime.exit(0);
       });
