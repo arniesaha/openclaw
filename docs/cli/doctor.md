@@ -23,6 +23,8 @@ openclaw doctor --repair
 openclaw doctor --deep
 openclaw doctor --repair --non-interactive
 openclaw doctor --generate-gateway-token
+openclaw doctor --post-upgrade
+openclaw doctor --post-upgrade --json
 ```
 
 For channel-specific permissions, use the channel probes instead of `doctor`:
@@ -44,6 +46,8 @@ The targeted Discord capabilities probe reports the bot's effective channel perm
 - `--non-interactive`: run without prompts; safe migrations and non-service repairs only
 - `--generate-gateway-token`: generate and configure a gateway token
 - `--deep`: scan system services for extra gateway installs and report recent Gateway supervisor restart handoffs
+- `--post-upgrade`: run post-upgrade plugin compatibility probes; emits findings to stdout; exits with code 1 if any error-level findings are present
+- `--json`: emit machine-readable JSON envelope (`{ probesRun, findings }`); only honored when used with `--post-upgrade`
 
 Notes:
 
