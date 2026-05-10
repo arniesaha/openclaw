@@ -1,5 +1,6 @@
+import { formatCliCommand } from "../../cli/command-format.js";
 import { logConfigUpdated } from "../../config/logging.js";
-import type { RuntimeEnv } from "../../runtime.js";
+import { type RuntimeEnv, writeRuntimeJson } from "../../runtime.js";
 import { loadModelsConfig } from "./load-config.js";
 import {
   ensureFlagCompatibility,
@@ -27,7 +28,7 @@ export async function modelsAliasesListCommand(
   );
 
   if (opts.json) {
-    runtime.log(JSON.stringify({ aliases }, null, 2));
+    writeRuntimeJson(runtime, { aliases });
     return;
   }
   if (opts.plain) {
@@ -95,7 +96,9 @@ export async function modelsAliasesRemoveCommand(aliasRaw: string, runtime: Runt
       }
     }
     if (!found) {
-      throw new Error(`Alias not found: ${alias}`);
+      throw new Error(
+        `Alias not found: ${alias}. Run ${formatCliCommand("openclaw models aliases list")} to see configured aliases.`,
+      );
     }
     return {
       ...cfg,

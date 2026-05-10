@@ -1,20 +1,21 @@
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeEnv } from "../runtime.js";
+import { onboardCommand, setupWizardCommand } from "./onboard.js";
 
 const mocks = vi.hoisted(() => ({
-  runInteractiveOnboarding: vi.fn(async () => {}),
-  runNonInteractiveOnboarding: vi.fn(async () => {}),
+  runInteractiveSetup: vi.fn(async () => {}),
+  runNonInteractiveSetup: vi.fn(async () => {}),
   readConfigFileSnapshot: vi.fn(async () => ({ exists: false, valid: false, config: {} })),
   handleReset: vi.fn(async () => {}),
 }));
 
 vi.mock("./onboard-interactive.js", () => ({
-  runInteractiveOnboarding: mocks.runInteractiveOnboarding,
+  runInteractiveSetup: mocks.runInteractiveSetup,
 }));
 
 vi.mock("./onboard-non-interactive.js", () => ({
-  runNonInteractiveOnboarding: mocks.runNonInteractiveOnboarding,
+  runNonInteractiveSetup: mocks.runNonInteractiveSetup,
 }));
 
 vi.mock("../config/config.js", () => ({
@@ -26,8 +27,6 @@ vi.mock("./onboard-helpers.js", () => ({
   handleReset: mocks.handleReset,
 }));
 
-const { onboardCommand } = await import("./onboard.js");
-
 function makeRuntime(): RuntimeEnv {
   return {
     log: vi.fn(),
@@ -36,16 +35,31 @@ function makeRuntime(): RuntimeEnv {
   };
 }
 
-describe("onboardCommand", () => {
+function expectResetCall(params: { scope: string; runtime: RuntimeEnv; workspace?: string }): void {
+  const calls = mocks.handleReset.mock.calls as unknown as Array<[string, string, RuntimeEnv]>;
+  const call = calls[0];
+  if (!call) {
+    throw new Error("expected handleReset call");
+  }
+  expect(call[0]).toBe(params.scope);
+  if (params.workspace) {
+    expect(call[1]).toBe(params.workspace);
+  } else {
+    expect(typeof call[1]).toBe("string");
+  }
+  expect(call[2]).toBe(params.runtime);
+}
+
+describe("setupWizardCommand", () => {
   afterEach(() => {
     vi.clearAllMocks();
     mocks.readConfigFileSnapshot.mockResolvedValue({ exists: false, valid: false, config: {} });
   });
 
-  it("fails fast for invalid secret-input-mode before onboarding starts", async () => {
+  it("fails fast for invalid secret-input-mode before setup starts", async () => {
     const runtime = makeRuntime();
 
-    await onboardCommand(
+    await setupWizardCommand(
       {
         secretInputMode: "invalid" as never, // pragma: allowlist secret
       },
@@ -53,19 +67,20 @@ describe("onboardCommand", () => {
     );
 
     expect(runtime.error).toHaveBeenCalledWith(
-      'Invalid --secret-input-mode. Use "plaintext" or "ref".',
+      expect.stringContaining('Invalid --secret-input-mode. Use "plaintext" or "ref", or run '),
     );
+    expect(runtime.error).toHaveBeenCalledWith(expect.stringContaining("onboard"));
     expect(runtime.exit).toHaveBeenCalledWith(1);
-    expect(mocks.runInteractiveOnboarding).not.toHaveBeenCalled();
-    expect(mocks.runNonInteractiveOnboarding).not.toHaveBeenCalled();
+    expect(mocks.runInteractiveSetup).not.toHaveBeenCalled();
+    expect(mocks.runNonInteractiveSetup).not.toHaveBeenCalled();
   });
 
-  it("logs ASCII-safe Windows guidance before onboarding", async () => {
+  it("logs ASCII-safe Windows guidance before setup", async () => {
     const runtime = makeRuntime();
     const platformSpy = vi.spyOn(process, "platform", "get").mockReturnValue("win32");
 
     try {
-      await onboardCommand({}, runtime);
+      await setupWizardCommand({}, runtime);
 
       expect(runtime.log).toHaveBeenCalledWith(
         [
@@ -83,18 +98,14 @@ describe("onboardCommand", () => {
   it("defaults --reset to config+creds+sessions scope", async () => {
     const runtime = makeRuntime();
 
-    await onboardCommand(
+    await setupWizardCommand(
       {
         reset: true,
       },
       runtime,
     );
 
-    expect(mocks.handleReset).toHaveBeenCalledWith(
-      "config+creds+sessions",
-      expect.any(String),
-      runtime,
-    );
+    expectResetCall({ scope: "config+creds+sessions", runtime });
   });
 
   it("uses configured default workspace for --reset when --workspace is not provided", async () => {
@@ -111,7 +122,7 @@ describe("onboardCommand", () => {
       },
     });
 
-    await onboardCommand(
+    await setupWizardCommand(
       {
         reset: true,
       },
@@ -128,7 +139,7 @@ describe("onboardCommand", () => {
   it("accepts explicit --reset-scope full", async () => {
     const runtime = makeRuntime();
 
-    await onboardCommand(
+    await setupWizardCommand(
       {
         reset: true,
         resetScope: "full",
@@ -136,13 +147,13 @@ describe("onboardCommand", () => {
       runtime,
     );
 
-    expect(mocks.handleReset).toHaveBeenCalledWith("full", expect.any(String), runtime);
+    expectResetCall({ scope: "full", runtime });
   });
 
   it("fails fast for invalid --reset-scope", async () => {
     const runtime = makeRuntime();
 
-    await onboardCommand(
+    await setupWizardCommand(
       {
         reset: true,
         resetScope: "invalid" as never,
@@ -151,11 +162,18 @@ describe("onboardCommand", () => {
     );
 
     expect(runtime.error).toHaveBeenCalledWith(
-      'Invalid --reset-scope. Use "config", "config+creds+sessions", or "full".',
+      expect.stringContaining(
+        'Invalid --reset-scope. Use "config", "config+creds+sessions", or "full".',
+      ),
     );
+    expect(runtime.error).toHaveBeenCalledWith(expect.stringContaining("config-only reset"));
     expect(runtime.exit).toHaveBeenCalledWith(1);
     expect(mocks.handleReset).not.toHaveBeenCalled();
-    expect(mocks.runInteractiveOnboarding).not.toHaveBeenCalled();
-    expect(mocks.runNonInteractiveOnboarding).not.toHaveBeenCalled();
+    expect(mocks.runInteractiveSetup).not.toHaveBeenCalled();
+    expect(mocks.runNonInteractiveSetup).not.toHaveBeenCalled();
+  });
+
+  it("keeps onboardCommand as an alias for setupWizardCommand", () => {
+    expect(onboardCommand).toBe(setupWizardCommand);
   });
 });

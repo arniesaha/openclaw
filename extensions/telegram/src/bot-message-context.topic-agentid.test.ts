@@ -1,6 +1,5 @@
+import { getRuntimeConfig } from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { loadConfig } from "../../../src/config/config.js";
-import { buildTelegramMessageContextForTest } from "./bot-message-context.test-harness.js";
 
 const { defaultRouteConfig } = vi.hoisted(() => ({
   defaultRouteConfig: {
@@ -12,13 +11,18 @@ const { defaultRouteConfig } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../../../src/config/config.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../../src/config/config.js")>();
+vi.mock("openclaw/plugin-sdk/runtime-config-snapshot", async () => {
+  const actual = await vi.importActual<
+    typeof import("openclaw/plugin-sdk/runtime-config-snapshot")
+  >("openclaw/plugin-sdk/runtime-config-snapshot");
   return {
     ...actual,
-    loadConfig: vi.fn(() => defaultRouteConfig),
+    getRuntimeConfig: vi.fn(() => defaultRouteConfig),
   };
 });
+
+const { buildTelegramMessageContextForTest } =
+  await import("./bot-message-context.test-harness.js");
 
 describe("buildTelegramMessageContext per-topic agentId routing", () => {
   function buildForumMessage(threadId = 3) {
@@ -53,13 +57,12 @@ describe("buildTelegramMessageContext per-topic agentId routing", () => {
   }
 
   beforeEach(() => {
-    vi.mocked(loadConfig).mockReturnValue(defaultRouteConfig as never);
+    vi.mocked(getRuntimeConfig).mockReturnValue(defaultRouteConfig as never);
   });
 
   it("uses group-level agent when no topic agentId is set", async () => {
     const ctx = await buildForumContext({ topicConfig: { systemPrompt: "Be nice" } });
 
-    expect(ctx).not.toBeNull();
     expect(ctx?.ctxPayload?.SessionKey).toBe("agent:main:telegram:group:-1001234567890:topic:3");
   });
 
@@ -68,7 +71,6 @@ describe("buildTelegramMessageContext per-topic agentId routing", () => {
       topicConfig: { agentId: "zu", systemPrompt: "I am Zu" },
     });
 
-    expect(ctx).not.toBeNull();
     expect(ctx?.ctxPayload?.SessionKey).toContain("agent:zu:");
     expect(ctx?.ctxPayload?.SessionKey).toContain("telegram:group:-1001234567890:topic:3");
   });
@@ -94,12 +96,11 @@ describe("buildTelegramMessageContext per-topic agentId routing", () => {
       topicConfig: { agentId: "   ", systemPrompt: "Be nice" },
     });
 
-    expect(ctx).not.toBeNull();
     expect(ctx?.ctxPayload?.SessionKey).toContain("agent:main:");
   });
 
-  it("falls back to default agent when topic agentId does not exist", async () => {
-    vi.mocked(loadConfig).mockReturnValue({
+  it("preserves an unknown topic agentId in the session key", async () => {
+    vi.mocked(getRuntimeConfig).mockReturnValue({
       agents: {
         list: [{ id: "main", default: true }, { id: "zu" }],
       },
@@ -109,8 +110,7 @@ describe("buildTelegramMessageContext per-topic agentId routing", () => {
 
     const ctx = await buildForumContext({ topicConfig: { agentId: "ghost" } });
 
-    expect(ctx).not.toBeNull();
-    expect(ctx?.ctxPayload?.SessionKey).toContain("agent:main:");
+    expect(ctx?.ctxPayload?.SessionKey).toContain("agent:ghost:");
   });
 
   it("routes DM topic to specific agent when agentId is set", async () => {
@@ -134,7 +134,6 @@ describe("buildTelegramMessageContext per-topic agentId routing", () => {
       }),
     });
 
-    expect(ctx).not.toBeNull();
     expect(ctx?.ctxPayload?.SessionKey).toContain("agent:support:");
   });
 });
