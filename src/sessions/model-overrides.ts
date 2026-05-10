@@ -54,6 +54,10 @@ export function applyModelOverrideToSessionEntry(params: {
       delete entry.modelOverrideSource;
       updated = true;
     }
+    if (entry.modelOverrideExpiresAt !== undefined) {
+      delete entry.modelOverrideExpiresAt;
+      updated = true;
+    }
     updated = clearFallbackOrigin(entry) || updated;
   } else {
     if (entry.providerOverride !== selection.provider) {
@@ -68,6 +72,11 @@ export function applyModelOverrideToSessionEntry(params: {
     }
     if (entry.modelOverrideSource !== selectionSource) {
       entry.modelOverrideSource = selectionSource;
+      updated = true;
+    }
+    // User-driven overrides should never expire; drop any stale TTL.
+    if (selectionSource === "user" && entry.modelOverrideExpiresAt !== undefined) {
+      delete entry.modelOverrideExpiresAt;
       updated = true;
     }
     updated = clearFallbackOrigin(entry) || updated;
