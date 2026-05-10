@@ -145,6 +145,56 @@ describe("applyModelOverrideToSessionEntry", () => {
     expect(entry.modelOverrideSource).toBe("auto");
   });
 
+  it("clears modelOverrideExpiresAt when switching to the default model", () => {
+    const entry: SessionEntry = {
+      sessionId: "sess-ttl-1",
+      updatedAt: Date.now() - 5_000,
+      providerOverride: "minimax",
+      modelOverride: "MiniMax-M2.7-highspeed",
+      modelOverrideSource: "auto",
+      modelOverrideExpiresAt: Date.now() + 60_000,
+    };
+
+    const result = applyModelOverrideToSessionEntry({
+      entry,
+      selection: {
+        provider: "openai-codex",
+        model: "gpt-5.5",
+        isDefault: true,
+      },
+    });
+
+    expect(result.updated).toBe(true);
+    expect(entry.modelOverride).toBeUndefined();
+    expect(entry.modelOverrideSource).toBeUndefined();
+    expect(entry.modelOverrideExpiresAt).toBeUndefined();
+  });
+
+  it("strips a stale modelOverrideExpiresAt when promoting to a user override", () => {
+    const entry: SessionEntry = {
+      sessionId: "sess-ttl-2",
+      updatedAt: Date.now() - 5_000,
+      providerOverride: "minimax",
+      modelOverride: "MiniMax-M2.7-highspeed",
+      modelOverrideSource: "auto",
+      modelOverrideExpiresAt: Date.now() + 60_000,
+    };
+
+    const result = applyModelOverrideToSessionEntry({
+      entry,
+      selection: {
+        provider: "anthropic",
+        model: "claude-sonnet-4-6",
+      },
+      selectionSource: "user",
+    });
+
+    expect(result.updated).toBe(true);
+    expect(entry.modelOverride).toBe("claude-sonnet-4-6");
+    expect(entry.modelOverrideSource).toBe("user");
+    expect(entry.modelOverrideExpiresAt).toBeUndefined();
+  });
+
   it("sets liveModelSwitchPending only when explicitly requested", () => {
     const entry: SessionEntry = {
       sessionId: "sess-5",

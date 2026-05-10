@@ -3712,6 +3712,93 @@ describe("runAgentTurnWithFallback", () => {
     });
   });
 
+  it("stamps modelOverrideExpiresAt from rate_limit reason default TTL", async () => {
+    const applyFallbackCandidateSelectionToEntry =
+      await getApplyFallbackCandidateSelectionToEntry();
+    const entry = { sessionId: "session", updatedAt: 1 } as SessionEntry;
+    const now = 1_000_000_000_000;
+
+    const { updated } = applyFallbackCandidateSelectionToEntry({
+      entry,
+      run: { provider: "openai-codex", model: "gpt-5.5" } as FollowupRun["run"],
+      provider: "minimax",
+      model: "MiniMax-M2.7-highspeed",
+      now,
+      fallbackReason: "rate_limit",
+    });
+
+    expect(updated).toBe(true);
+    // rate_limit default TTL is 15 min → now + 900_000
+    expectRecordFields(entry as unknown as Record<string, unknown>, {
+      modelOverride: "MiniMax-M2.7-highspeed",
+      modelOverrideSource: "auto",
+      modelOverrideExpiresAt: now + 15 * 60 * 1000,
+    });
+  });
+
+  it("uses upstream resetsAt over the default TTL when supplied", async () => {
+    const applyFallbackCandidateSelectionToEntry =
+      await getApplyFallbackCandidateSelectionToEntry();
+    const entry = { sessionId: "session", updatedAt: 1 } as SessionEntry;
+    const now = 1_000_000_000_000;
+    const resetsAt = now + 42 * 60 * 1000;
+
+    const { updated } = applyFallbackCandidateSelectionToEntry({
+      entry,
+      run: { provider: "openai-codex", model: "gpt-5.5" } as FollowupRun["run"],
+      provider: "minimax",
+      model: "MiniMax-M2.7-highspeed",
+      now,
+      fallbackReason: "rate_limit",
+      upstreamResetsAtMs: resetsAt,
+    });
+
+    expect(updated).toBe(true);
+    expect((entry as unknown as Record<string, unknown>).modelOverrideExpiresAt).toBe(resetsAt);
+  });
+
+  it("does not set modelOverrideExpiresAt for billing reason", async () => {
+    const applyFallbackCandidateSelectionToEntry =
+      await getApplyFallbackCandidateSelectionToEntry();
+    const entry = { sessionId: "session", updatedAt: 1 } as SessionEntry;
+    const now = 1_000_000_000_000;
+
+    const { updated } = applyFallbackCandidateSelectionToEntry({
+      entry,
+      run: { provider: "anthropic", model: "claude-opus" } as FollowupRun["run"],
+      provider: "openai-codex",
+      model: "gpt-5.5",
+      now,
+      fallbackReason: "billing",
+    });
+
+    expect(updated).toBe(true);
+    expect((entry as unknown as Record<string, unknown>).modelOverrideExpiresAt).toBeUndefined();
+  });
+
+  it("does not set modelOverrideExpiresAt when fallbackReason is missing", async () => {
+    const applyFallbackCandidateSelectionToEntry =
+      await getApplyFallbackCandidateSelectionToEntry();
+    const entry = { sessionId: "session", updatedAt: 1 } as SessionEntry;
+    const now = 1_000_000_000_000;
+
+    const { updated } = applyFallbackCandidateSelectionToEntry({
+      entry,
+      run: { provider: "anthropic", model: "claude-opus" } as FollowupRun["run"],
+      provider: "openai-codex",
+      model: "gpt-5.5",
+      now,
+      // unknown reason still gets a default TTL
+      fallbackReason: undefined,
+    });
+
+    expect(updated).toBe(true);
+    // unknown reason maps to the 30 min default
+    expect((entry as unknown as Record<string, unknown>).modelOverrideExpiresAt).toBe(
+      now + 30 * 60 * 1000,
+    );
+  });
+
   it("preserves original auto-fallback origin across chained fallbacks", async () => {
     const applyFallbackCandidateSelectionToEntry =
       await getApplyFallbackCandidateSelectionToEntry();

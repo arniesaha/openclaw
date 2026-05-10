@@ -269,6 +269,14 @@ export type SessionEntry = {
    * Resets only preserve user-driven overrides.
    */
   modelOverrideSource?: "auto" | "user";
+  /**
+   * Epoch milliseconds after which an `auto` model override should be
+   * considered stale and cleared on the next resolution pass, so the
+   * configured primary is retried. Set when persisting an auto-fallback
+   * based on the fallback reason (e.g. `rate_limit` with a known
+   * `resetsAt`). Ignored for `user` overrides — those never time out.
+   */
+  modelOverrideExpiresAt?: number;
   /** Selected model that produced the current auto fallback override. */
   modelOverrideFallbackOriginProvider?: string;
   modelOverrideFallbackOriginModel?: string;

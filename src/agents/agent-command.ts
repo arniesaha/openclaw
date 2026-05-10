@@ -794,6 +794,28 @@ async function agentCommandInternal(
           entry,
         });
       }
+      // Clear expired auto overrides so the configured primary is retried.
+      // Only `auto` (fallback-set) overrides expire; `user` overrides
+      // (explicit /model or sessions.patch) never time out.
+      if (
+        entry.modelOverrideSource === "auto" &&
+        typeof entry.modelOverrideExpiresAt === "number" &&
+        entry.modelOverrideExpiresAt > 0 &&
+        entry.modelOverrideExpiresAt <= Date.now()
+      ) {
+        const { updated } = applyModelOverrideToSessionEntry({
+          entry,
+          selection: { provider: defaultProvider, model: defaultModel, isDefault: true },
+        });
+        if (updated) {
+          await persistSessionEntry({
+            sessionStore,
+            sessionKey,
+            storePath,
+            entry,
+          });
+        }
+      }
       const overrideProvider = sessionEntry.providerOverride?.trim() || defaultProvider;
       const overrideModel = sessionEntry.modelOverride?.trim();
       if (overrideModel) {

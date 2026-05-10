@@ -125,11 +125,60 @@ export type AgentRunLoopResult =
 
 type EmbeddedAgentRunResult = Awaited<ReturnType<typeof runEmbeddedPiAgent>>;
 
+/**
+ * Default TTL (ms) for an `auto` model override keyed by the fallback
+ * reason that produced it. After this window elapses, the override is
+ * cleared on the next resolution pass so the configured primary is
+ * retried. A `rate_limit` failure with a known upstream reset timestamp
+ * uses that timestamp instead of these defaults.
+ *
+ * Values are intentionally conservative: a slightly-too-short TTL just
+ * means one extra failover round-trip, while a too-long TTL leaves the
+ * session pinned to a fallback model that may be more expensive or less
+ * capable than the configured primary.
+ */
+const FALLBACK_AUTO_OVERRIDE_DEFAULT_TTL_MS: Record<string, number> = {
+  rate_limit: 15 * 60 * 1000, // 15 min — typical hourly window margin
+  overloaded: 5 * 60 * 1000, // 5 min — provider-side capacity spike
+  unknown: 30 * 60 * 1000, // 30 min — be conservative on unknown causes
+};
+
+/**
+ * `billing` failures (out of credits, blocked account, etc.) are not
+ * expected to self-heal on a short timescale, so we don't apply a TTL —
+ * the user must explicitly intervene.
+ */
+const FALLBACK_AUTO_OVERRIDE_REASONS_WITHOUT_TTL = new Set(["billing"]);
+
+function computeFallbackAutoOverrideExpiresAt(params: {
+  reason: string | undefined;
+  upstreamResetsAtMs: number | undefined;
+  now: number;
+}): number | undefined {
+  const reason = params.reason ?? "unknown";
+  if (FALLBACK_AUTO_OVERRIDE_REASONS_WITHOUT_TTL.has(reason)) {
+    return undefined;
+  }
+  // Prefer the upstream-provided reset time when available — it's the
+  // most accurate signal for when the primary is likely to recover.
+  if (
+    typeof params.upstreamResetsAtMs === "number" &&
+    Number.isFinite(params.upstreamResetsAtMs) &&
+    params.upstreamResetsAtMs > params.now
+  ) {
+    return params.upstreamResetsAtMs;
+  }
+  const defaultTtl =
+    FALLBACK_AUTO_OVERRIDE_DEFAULT_TTL_MS[reason] ?? FALLBACK_AUTO_OVERRIDE_DEFAULT_TTL_MS.unknown;
+  return params.now + defaultTtl;
+}
+
 type FallbackSelectionState = Pick<
   SessionEntry,
   | "providerOverride"
   | "modelOverride"
   | "modelOverrideSource"
+  | "modelOverrideExpiresAt"
   | "modelOverrideFallbackOriginProvider"
   | "modelOverrideFallbackOriginModel"
   | "authProfileOverride"
@@ -141,6 +190,7 @@ const FALLBACK_SELECTION_STATE_KEYS = [
   "providerOverride",
   "modelOverride",
   "modelOverrideSource",
+  "modelOverrideExpiresAt",
   "modelOverrideFallbackOriginProvider",
   "modelOverrideFallbackOriginModel",
   "authProfileOverride",
@@ -169,6 +219,12 @@ function setFallbackSelectionStateField(
     case "modelOverrideSource":
       if (entry.modelOverrideSource !== value) {
         entry.modelOverrideSource = value as SessionEntry["modelOverrideSource"];
+        return true;
+      }
+      return false;
+    case "modelOverrideExpiresAt":
+      if (entry.modelOverrideExpiresAt !== value) {
+        entry.modelOverrideExpiresAt = value as SessionEntry["modelOverrideExpiresAt"];
         return true;
       }
       return false;
@@ -214,6 +270,7 @@ function snapshotFallbackSelectionState(entry: SessionEntry): FallbackSelectionS
     providerOverride: entry.providerOverride,
     modelOverride: entry.modelOverride,
     modelOverrideSource: entry.modelOverrideSource,
+    modelOverrideExpiresAt: entry.modelOverrideExpiresAt,
     modelOverrideFallbackOriginProvider: entry.modelOverrideFallbackOriginProvider,
     modelOverrideFallbackOriginModel: entry.modelOverrideFallbackOriginModel,
     authProfileOverride: entry.authProfileOverride,
@@ -229,11 +286,13 @@ function buildFallbackSelectionState(params: {
   originModel: string;
   authProfileId?: string;
   authProfileIdSource?: "auto" | "user";
+  expiresAt?: number;
 }): FallbackSelectionState {
   return {
     providerOverride: params.provider,
     modelOverride: params.model,
     modelOverrideSource: "auto",
+    modelOverrideExpiresAt: params.expiresAt,
     modelOverrideFallbackOriginProvider: params.originProvider,
     modelOverrideFallbackOriginModel: params.originModel,
     authProfileOverride: params.authProfileId,
@@ -266,12 +325,32 @@ export function applyFallbackCandidateSelectionToEntry(params: {
   provider: string;
   model: string;
   now?: number;
+  /**
+   * Reason classification (e.g. "rate_limit", "overloaded") from the
+   * fallback step that caused this candidate to be selected. Used to
+   * compute a TTL on the auto override so the session retries the
+   * primary once the upstream issue is likely resolved.
+   */
+  fallbackReason?: string;
+  /**
+   * Upstream-provided reset timestamp (epoch ms) for the failing
+   * primary, when the provider returns one (e.g. Codex's
+   * `account/rateLimits/updated` notification). Overrides the default
+   * TTL for the matching fallback reason.
+   */
+  upstreamResetsAtMs?: number;
 }): { updated: boolean; nextState?: FallbackSelectionState } {
   if (params.provider === params.run.provider && params.model === params.run.model) {
     return { updated: false };
   }
   const scopedAuthProfile = resolveRunAuthProfile(params.run, params.provider);
   const origin = resolveFallbackSelectionOrigin({ entry: params.entry, run: params.run });
+  const now = params.now ?? Date.now();
+  const expiresAt = computeFallbackAutoOverrideExpiresAt({
+    reason: params.fallbackReason,
+    upstreamResetsAtMs: params.upstreamResetsAtMs,
+    now,
+  });
   const nextState = buildFallbackSelectionState({
     provider: params.provider,
     model: params.model,
@@ -279,9 +358,10 @@ export function applyFallbackCandidateSelectionToEntry(params: {
     originModel: origin.model,
     authProfileId: scopedAuthProfile.authProfileId,
     authProfileIdSource: scopedAuthProfile.authProfileIdSource,
+    expiresAt,
   });
   return {
-    updated: applyFallbackSelectionState(params.entry, nextState, params.now),
+    updated: applyFallbackSelectionState(params.entry, nextState, now),
     nextState,
   };
 }
@@ -1226,6 +1306,13 @@ export async function runAgentTurnWithFallback(params: {
         rollback: () => Promise<void>;
       }
     | undefined;
+  // Most recent fallback step the chain observed. Captured from
+  // onFallbackStep so persistFallbackCandidateSelection can stamp an
+  // accurate TTL on the auto override it persists (different reasons
+  // imply different recovery windows; see
+  // FALLBACK_AUTO_OVERRIDE_DEFAULT_TTL_MS).
+  let mostRecentFallbackReason: string | undefined;
+  let mostRecentFallbackUpstreamResetsAtMs: number | undefined;
   const clearPendingFallbackRollback = (rollback?: () => Promise<void>) => {
     if (!rollback || pendingFallbackCandidateRollback?.rollback === rollback) {
       pendingFallbackCandidateRollback = undefined;
@@ -1289,6 +1376,8 @@ export async function runAgentTurnWithFallback(params: {
       run: params.followupRun.run,
       provider,
       model,
+      fallbackReason: mostRecentFallbackReason,
+      upstreamResetsAtMs: mostRecentFallbackUpstreamResetsAtMs,
     });
     const nextState = applied.nextState;
     if (!applied.updated || !nextState) {
@@ -1424,6 +1513,22 @@ export async function runAgentTurnWithFallback(params: {
         sessionId: params.followupRun.run.sessionId,
         lane: runLane,
         onFallbackStep: (step) => {
+          // Capture the most recent failure reason so the next persisted
+          // auto override carries an accurate TTL. The step describes the
+          // FROM-model's failure that triggered the fallback; that's the
+          // reason we want to base the recovery window on.
+          if (
+            step.fallbackStepFinalOutcome === "next_fallback" &&
+            step.fallbackStepFromFailureReason
+          ) {
+            mostRecentFallbackReason = step.fallbackStepFromFailureReason;
+            // Upstream reset timestamp isn't carried on the step today;
+            // codex publishes it via a separate `account/rateLimits/updated`
+            // notification handled in the codex app-server adapter. A
+            // future change can thread it through so we use the precise
+            // reset moment instead of the reason-based default TTL.
+            mostRecentFallbackUpstreamResetsAtMs = undefined;
+          }
           emitModelFallbackStepLifecycle({
             runId,
             sessionKey: params.sessionKey,
