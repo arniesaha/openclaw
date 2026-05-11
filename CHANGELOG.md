@@ -70,6 +70,7 @@ Docs: https://docs.openclaw.ai
 - Codex app-server: default migrated native plugin destructive-action policy to enabled while preserving explicit global and per-plugin false overrides.
 - Build: upgrade workspace package management to pnpm 11 and keep Docker, install, update, and release workflows on the pnpm 11 config surface. (#79414) Thanks @altaywtf.
 - Build: align Telegram QA workflows and git source installs with the pnpm 11 workspace build allowlist surface. (#80588) Thanks @altaywtf.
+- Plugin SDK: add `onModelDiagnosticEvent` for plugins that need to observe the `model.call.{started,completed,error}`, `model.usage`, and `model.failover` lifecycle events the runtime emits via `emitTrustedDiagnosticEvent`. The general `onDiagnosticEvent` filter intentionally drops every trusted event for safety, which left observability plugins (e.g. cost/usage trackers, telemetry bridges) without a way to attribute per-call spans. The new helper is a narrow, opt-in subscription over the five model lifecycle event types and otherwise behaves identically (cloned-and-frozen payloads, unsubscribe disposer).
 - Models: add provider-level `localService` startup for on-demand local model servers before OpenAI-compatible requests, including one-shot model probes.
 - Agents: trim default system prompt guidance and send-only message tool schemas to reduce prompt tokens while preserving GPT-5 personality guidance.
 - Context: add `/context map` to send a treemap image of the current session context contributors. (#79867)
