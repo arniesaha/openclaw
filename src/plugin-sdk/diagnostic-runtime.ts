@@ -11,6 +11,7 @@ export {
   isDiagnosticsEnabled,
   onInternalDiagnosticEvent,
   onDiagnosticEvent,
+  onModelDiagnosticEvent,
   resetDiagnosticEventsForTest,
 } from "../infra/diagnostic-events.js";
 export type { DiagnosticTraceContext } from "../infra/diagnostic-trace-context.js";
