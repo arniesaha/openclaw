@@ -8,6 +8,7 @@ import type { ThinkLevel } from "../../auto-reply/thinking.js";
 import type { CliDeps } from "../../cli/outbound-send-deps.js";
 import type { AgentDefaultsConfig } from "../../config/types.agent-defaults.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
 import {
   logMessageProcessed,
   logMessageQueued,
@@ -1117,17 +1118,20 @@ export async function runCronIsolatedAgentTurn(params: {
   };
 
   const turnStartedAtMs = Date.now();
-  logMessageQueued({
-    sessionId: prepared.context.runSessionId,
-    sessionKey: prepared.context.runSessionKey,
-    channel: "cron",
-    source: "cron-isolated",
-  });
-  logSessionStateChange({
-    sessionId: prepared.context.runSessionId,
-    sessionKey: prepared.context.runSessionKey,
-    state: "processing",
-  });
+  const diagnosticsEnabled = isDiagnosticsEnabled(params.cfg);
+  if (diagnosticsEnabled) {
+    logMessageQueued({
+      sessionId: prepared.context.runSessionId,
+      sessionKey: prepared.context.runSessionKey,
+      channel: "cron",
+      source: "cron-isolated",
+    });
+    logSessionStateChange({
+      sessionId: prepared.context.runSessionId,
+      sessionKey: prepared.context.runSessionKey,
+      state: "processing",
+    });
+  }
 
   let outcome: "completed" | "error" = "completed";
   let outcomeError: string | undefined;
@@ -1200,18 +1204,20 @@ export async function runCronIsolatedAgentTurn(params: {
       ),
     });
   } finally {
-    logSessionStateChange({
-      sessionId: prepared.context.runSessionId,
-      sessionKey: prepared.context.runSessionKey,
-      state: "idle",
-    });
-    logMessageProcessed({
-      channel: "cron",
-      sessionId: prepared.context.runSessionId,
-      sessionKey: prepared.context.runSessionKey,
-      durationMs: Date.now() - turnStartedAtMs,
-      outcome,
-      error: outcomeError,
-    });
+    if (diagnosticsEnabled) {
+      logSessionStateChange({
+        sessionId: prepared.context.runSessionId,
+        sessionKey: prepared.context.runSessionKey,
+        state: "idle",
+      });
+      logMessageProcessed({
+        channel: "cron",
+        sessionId: prepared.context.runSessionId,
+        sessionKey: prepared.context.runSessionKey,
+        durationMs: Date.now() - turnStartedAtMs,
+        outcome,
+        error: outcomeError,
+      });
+    }
   }
 }
