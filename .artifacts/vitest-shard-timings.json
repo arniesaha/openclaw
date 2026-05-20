@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "configs": {
+    "test/vitest/vitest.cli.config.ts#include-1-38cbdaf9103b": {
+      "averageMs": 3966,
+      "lastMs": 3966,
+      "sampleCount": 1,
+      "updatedAt": "2026-05-20T14:21:00.131Z",
+      "baseConfig": "test/vitest/vitest.cli.config.ts",
+      "includePatternCount": 1
+    },
+    "test/vitest/vitest.commands.config.ts#include-1-fa34628a3754": {
+      "averageMs": 4413,
+      "lastMs": 4413,
+      "sampleCount": 1,
+      "updatedAt": "2026-05-20T14:21:00.131Z",
+      "baseConfig": "test/vitest/vitest.commands.config.ts",
+      "includePatternCount": 1
+    }
+  }
+}
