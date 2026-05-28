@@ -1,19 +1,27 @@
 {
   "version": 1,
   "configs": {
-    "test/vitest/vitest.cli.config.ts#include-1-38cbdaf9103b": {
-      "averageMs": 3966,
-      "lastMs": 3966,
+    "test/vitest/vitest.infra.config.ts#include-1-24d2925a4e91": {
+      "averageMs": 6203,
+      "lastMs": 6203,
       "sampleCount": 1,
-      "updatedAt": "2026-05-20T14:21:00.131Z",
+      "updatedAt": "2026-05-28T14:19:19.260Z",
+      "baseConfig": "test/vitest/vitest.infra.config.ts",
+      "includePatternCount": 1
+    },
+    "test/vitest/vitest.cli.config.ts#include-1-38cbdaf9103b": {
+      "averageMs": 5235,
+      "lastMs": 5235,
+      "sampleCount": 1,
+      "updatedAt": "2026-05-28T14:19:56.088Z",
       "baseConfig": "test/vitest/vitest.cli.config.ts",
       "includePatternCount": 1
     },
     "test/vitest/vitest.commands.config.ts#include-1-fa34628a3754": {
-      "averageMs": 4413,
-      "lastMs": 4413,
+      "averageMs": 5366,
+      "lastMs": 5366,
       "sampleCount": 1,
-      "updatedAt": "2026-05-20T14:21:00.131Z",
+      "updatedAt": "2026-05-28T14:19:56.088Z",
       "baseConfig": "test/vitest/vitest.commands.config.ts",
       "includePatternCount": 1
     }
