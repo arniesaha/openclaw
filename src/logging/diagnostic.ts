@@ -4,9 +4,11 @@ import { resolveCompactionTimeoutMs } from "../agents/embedded-agent-runner/comp
 import { getRuntimeConfig } from "../config/config.js";
 import { resolveAllAgentSessionStoreTargetsSync } from "../config/sessions/targets.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import type { DiagnosticClientContext } from "../infra/diagnostic-client-context.js";
 import {
   areDiagnosticsEnabledForProcess,
   emitInternalDiagnosticEvent as emitDiagnosticEvent,
+  emitInternalDiagnosticEventWithPrivateData,
   isDiagnosticsEnabled,
   type DiagnosticPhaseSnapshot,
   type DiagnosticLivenessWarningReason,
@@ -52,6 +54,7 @@ import {
   diagnosticSessionStates,
   getDiagnosticSessionState,
   getDiagnosticSessionStateCountForTest as getDiagnosticSessionStateCountForTestImpl,
+  peekDiagnosticSessionState,
   pruneDiagnosticSessionStates,
   resetDiagnosticSessionStateForTest,
   type SessionRef,
@@ -684,14 +687,23 @@ export function logMessageQueued(params: {
       } source=${params.source} queueDepth=${state.queueDepth} sessionState=${state.state}`,
     );
   }
-  emitDiagnosticEvent({
-    type: "message.queued",
+  const queuedEvent = {
+    type: "message.queued" as const,
     sessionId: state.sessionId,
     sessionKey: state.sessionKey,
     channel: params.channel,
     source: params.source,
     queueDepth: state.queueDepth,
-  });
+  };
+  // clientContext rides the trusted privateData channel (onTrustedDiagnosticEvent),
+  // never the public payload — keeps the event's public contract unchanged.
+  if (state.clientContext) {
+    emitInternalDiagnosticEventWithPrivateData(queuedEvent, {
+      clientContext: state.clientContext,
+    });
+  } else {
+    emitDiagnosticEvent(queuedEvent);
+  }
   markActivity();
 }
 
@@ -905,16 +917,54 @@ export function logSessionStateChange(
       }`,
     );
   }
-  emitDiagnosticEvent({
-    type: "session.state",
+  const stateEvent = {
+    type: "session.state" as const,
     sessionId: state.sessionId,
     sessionKey: state.sessionKey,
     prevState,
     state: params.state,
     reason: params.reason,
     queueDepth: state.queueDepth,
-  });
+  };
+  // clientContext rides the trusted privateData channel (onTrustedDiagnosticEvent),
+  // never the public payload — keeps the event's public contract unchanged.
+  if (state.clientContext) {
+    emitInternalDiagnosticEventWithPrivateData(stateEvent, {
+      clientContext: state.clientContext,
+    });
+  } else {
+    emitDiagnosticEvent(stateEvent);
+  }
   markActivity();
+}
+
+/**
+ * Seed an opaque, caller-supplied context bag onto a session's diagnostic state.
+ * Once seeded, every later `message.queued` / `session.state` event for the run
+ * carries it — the same shared-state propagation that already gives a later
+ * `message.queued` its `sessionKey`. Bounding/validation is the caller's
+ * responsibility (see normalizeDiagnosticClientContext).
+ */
+export function setDiagnosticSessionClientContext(
+  ref: SessionRef,
+  clientContext: DiagnosticClientContext | undefined,
+): void {
+  if (!areDiagnosticsEnabledForProcess()) {
+    return;
+  }
+  if (clientContext) {
+    getDiagnosticSessionState(ref).clientContext = clientContext;
+    return;
+  }
+  // No (or out-of-bounds) context for this run: actively clear any value a
+  // prior run left on the reused per-session diagnostic state, so later
+  // message.queued / session.state events are not misattributed to a stale
+  // upstream context. Per-session state is keyed by sessionId/sessionKey and
+  // lives until idle TTL, so the seed path must own clearing, not just setting.
+  const existing = peekDiagnosticSessionState(ref);
+  if (existing) {
+    existing.clientContext = undefined;
+  }
 }
 
 export function updateDiagnosticSessionFile(params: SessionRef) {
