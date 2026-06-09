@@ -1,8 +1,11 @@
+import type { DiagnosticClientContext } from "../infra/diagnostic-client-context.js";
+
 export type SessionStateValue = "idle" | "processing" | "waiting";
 
 export type SessionState = {
   sessionId?: string;
   sessionKey?: string;
+  clientContext?: DiagnosticClientContext;
   lastActivity: number;
   generation?: number;
   lastStuckWarnAgeMs?: number;
@@ -99,6 +102,7 @@ function mergeSessionState(target: SessionState, source: SessionState): void {
     sessionStatePriority(source.state) > sessionStatePriority(target.state);
   target.sessionId ??= source.sessionId;
   target.sessionKey ??= source.sessionKey;
+  target.clientContext ??= source.clientContext;
   if (sourceIsNewer || sourceIsSameAgeAndMoreActive) {
     target.state = source.state;
   }
