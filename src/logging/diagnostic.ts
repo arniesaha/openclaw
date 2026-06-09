@@ -3,6 +3,7 @@ import { monitorEventLoopDelay, performance } from "node:perf_hooks";
 import { getRuntimeConfig } from "../config/config.js";
 import { resolveAllAgentSessionStoreTargetsSync } from "../config/sessions/targets.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import type { DiagnosticClientContext } from "../infra/diagnostic-client-context.js";
 import {
   areDiagnosticsEnabledForProcess,
   emitInternalDiagnosticEvent as emitDiagnosticEvent,
@@ -669,6 +670,7 @@ export function logMessageQueued(params: {
   sessionKey?: string;
   channel?: string;
   source: string;
+  inputPreview?: string;
 }) {
   if (!areDiagnosticsEnabledForProcess()) {
     return;
@@ -693,6 +695,8 @@ export function logMessageQueued(params: {
     channel: params.channel,
     source: params.source,
     queueDepth: state.queueDepth,
+    inputPreview: params.inputPreview,
+    clientContext: state.clientContext,
   });
   markActivity();
 }
@@ -878,6 +882,8 @@ export function logSessionStateChange(
   params: SessionRef & {
     state: SessionStateValue;
     reason?: string;
+    inputPreview?: string;
+    taskLabel?: string;
   },
 ) {
   if (!areDiagnosticsEnabledForProcess()) {
@@ -915,6 +921,9 @@ export function logSessionStateChange(
     state: params.state,
     reason: params.reason,
     queueDepth: state.queueDepth,
+    inputPreview: params.inputPreview,
+    taskLabel: params.taskLabel,
+    clientContext: state.clientContext,
   });
   markActivity();
 }
@@ -926,6 +935,24 @@ export function updateDiagnosticSessionFile(params: SessionRef) {
   const state = getDiagnosticSessionState(params);
   state.sessionFile = params.sessionFile?.trim() || undefined;
   markActivity();
+}
+
+/**
+ * Seed an opaque, caller-supplied context bag onto a session's diagnostic state.
+ * Once seeded, every later `message.queued` / `session.state` event for the run
+ * carries it — the same shared-state propagation that already gives a later
+ * `message.queued` its `sessionKey`. Used by the gateway when a run is launched
+ * with upstream context a plugin should attribute spans to. Bounding/validation
+ * is the caller's responsibility (see normalizeDiagnosticClientContext).
+ */
+export function setDiagnosticSessionClientContext(
+  ref: SessionRef,
+  clientContext: DiagnosticClientContext | undefined,
+): void {
+  if (!clientContext || !areDiagnosticsEnabledForProcess()) {
+    return;
+  }
+  getDiagnosticSessionState(ref).clientContext = clientContext;
 }
 
 export function markDiagnosticSessionProgress(params: SessionRef) {
