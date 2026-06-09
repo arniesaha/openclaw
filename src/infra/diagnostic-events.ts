@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { EmbeddedAgentExecutionPhase } from "../agents/embedded-agent-runner/execution-phase.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { TalkBrain, TalkEventType, TalkMode, TalkTransport } from "../talk/talk-events.js";
+import type { DiagnosticClientContext } from "./diagnostic-client-context.js";
 import {
   isInternalDiagnosticEventInterested,
   resetInternalDiagnosticEventListenerPresence,
@@ -229,6 +230,8 @@ export type DiagnosticMessageQueuedEvent = DiagnosticBaseEvent & {
   channel?: string;
   source: string;
   queueDepth?: number;
+  inputPreview?: string;
+  clientContext?: DiagnosticClientContext;
 };
 
 export type DiagnosticMessageReceivedEvent = DiagnosticBaseEvent & {
@@ -322,6 +325,9 @@ export type DiagnosticSessionStateEvent = DiagnosticBaseEvent & {
   state: DiagnosticSessionState;
   reason?: string;
   queueDepth?: number;
+  inputPreview?: string;
+  taskLabel?: string;
+  clientContext?: DiagnosticClientContext;
 };
 
 export type DiagnosticSessionActiveWorkKind = "embedded_run" | "model_call" | "tool_call";
