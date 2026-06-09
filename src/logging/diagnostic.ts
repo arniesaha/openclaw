@@ -4,6 +4,7 @@ import { resolveCompactionTimeoutMs } from "../agents/embedded-agent-runner/comp
 import { resolveActiveEmbeddedRunRecoveryBlocker } from "../agents/embedded-agent-runner/run-state.js";
 import { getRuntimeConfig } from "../config/config.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import type { DiagnosticClientContext } from "../infra/diagnostic-client-context.js";
 import {
   areDiagnosticsEnabledForProcess,
   emitInternalDiagnosticEvent as emitDiagnosticEvent,
@@ -640,6 +641,7 @@ export function logMessageQueued(params: {
   sessionKey?: string;
   channel?: string;
   source: string;
+  inputPreview?: string;
 }) {
   logMessageQueuedWithBacklogPolicy(params, true);
 }
@@ -825,6 +827,8 @@ export function logSessionStateChange(
   params: SessionRef & {
     state: SessionStateValue;
     reason?: string;
+    inputPreview?: string;
+    taskLabel?: string;
   },
 ) {
   if (!areDiagnosticsEnabledForProcess()) {
@@ -862,8 +866,29 @@ export function logSessionStateChange(
     state: params.state,
     reason: params.reason,
     queueDepth: state.queueDepth,
+    inputPreview: params.inputPreview,
+    taskLabel: params.taskLabel,
+    clientContext: state.clientContext,
   });
   markActivity();
+}
+
+/**
+ * Seed an opaque, caller-supplied context bag onto a session's diagnostic state.
+ * Once seeded, every later `message.queued` / `session.state` event for the run
+ * carries it — the same shared-state propagation that already gives a later
+ * `message.queued` its `sessionKey`. Used by the gateway when a run is launched
+ * with upstream context a plugin should attribute spans to. Bounding/validation
+ * is the caller's responsibility (see normalizeDiagnosticClientContext).
+ */
+export function setDiagnosticSessionClientContext(
+  ref: SessionRef,
+  clientContext: DiagnosticClientContext | undefined,
+): void {
+  if (!clientContext || !areDiagnosticsEnabledForProcess()) {
+    return;
+  }
+  getDiagnosticSessionState(ref).clientContext = clientContext;
 }
 
 export function markDiagnosticSessionProgress(params: SessionRef) {
