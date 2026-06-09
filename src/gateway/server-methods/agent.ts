@@ -93,6 +93,7 @@ import {
   clearAgentRunContext,
   getAgentEventLifecycleGeneration,
 } from "../../infra/agent-events.js";
+import { normalizeDiagnosticClientContext } from "../../infra/diagnostic-client-context.js";
 import { emitDiagnosticEvent } from "../../infra/diagnostic-events.js";
 import { formatUncaughtError, readErrorName } from "../../infra/errors.js";
 import {
@@ -106,6 +107,7 @@ import {
   loadVoiceWakeRoutingConfig,
   resolveVoiceWakeRouteByTrigger,
 } from "../../infra/voicewake-routing.js";
+import { setDiagnosticSessionClientContext } from "../../logging/diagnostic.js";
 import type { PromptImageOrderEntry } from "../../media/prompt-image-order.js";
 import type { PluginHookSessionEndReason } from "../../plugins/hook-types.js";
 import {
@@ -1175,6 +1177,7 @@ export const agentHandlers: GatewayRequestHandlers = {
       inputProvenance?: InputProvenance;
       workspaceDir?: string;
       voiceWakeTrigger?: string;
+      clientContext?: unknown;
     };
     if (request.cwd && !path.isAbsolute(request.cwd)) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "cwd must be absolute"));
@@ -3292,6 +3295,15 @@ export const agentHandlers: GatewayRequestHandlers = {
           }
           const execApprovalFollowupElevatedDefaults =
             execApprovalFollowupRuntimeHandoff?.bashElevated;
+
+          // Seed any caller-supplied upstream context onto this run's diagnostic
+          // session state, keyed by the same session the run uses, so every
+          // message.queued / session.state event the run emits carries it for
+          // plugins to attribute spans. No-op when absent or out of bounds.
+          setDiagnosticSessionClientContext(
+            { sessionKey: resolvedSessionKey, sessionId: resolvedSessionId },
+            normalizeDiagnosticClientContext(request.clientContext),
+          );
 
           dispatchAgentRunFromGateway({
             ingressOpts: {

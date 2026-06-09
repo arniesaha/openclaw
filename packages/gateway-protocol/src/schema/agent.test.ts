@@ -80,4 +80,19 @@ describe("AgentParamsSchema", () => {
 
     expect(Value.Check(AgentParamsSchema, params)).toBe(false);
   });
+
+  it("accepts an opaque clientContext bag", () => {
+    const params = {
+      message: "run",
+      sessionKey: "agent:main:paperclip-conductor",
+      idempotencyKey: "run-1",
+      clientContext: {
+        schemaVersion: "agentweave.context.v1",
+        agentId: "Conductor",
+        paperclip: { runId: "abc", issueId: "AGE-8" },
+      },
+    };
+
+    expect(Value.Check(AgentParamsSchema, params)).toBe(true);
+  });
 });
