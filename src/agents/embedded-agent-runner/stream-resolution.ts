@@ -19,6 +19,24 @@ type EmbeddedStreamOptions = Parameters<StreamFn>[2] & {
   promptCacheKey?: string;
 };
 
+// Fork carry (default off): when OPENCLAW_AGENTWEAVE_SESSION_KEY_HEADER === "1",
+// stamp the run's sessionKey onto outbound LLM requests as x-agentweave-session-key.
+// The agentweave proxy joins this run's child LLM spans to the forced upstream
+// context keyed by that header (proxy _forced_session_contexts). Stock builds and
+// any other deployment leave the wire byte-for-byte unchanged.
+export function withAgentweaveSessionKeyHeader(
+  options: EmbeddedStreamOptions | undefined,
+  sessionKey: string | undefined,
+): EmbeddedStreamOptions | undefined {
+  if (!sessionKey || process.env.OPENCLAW_AGENTWEAVE_SESSION_KEY_HEADER !== "1") {
+    return options;
+  }
+  return {
+    ...options,
+    headers: { ...options?.headers, "x-agentweave-session-key": sessionKey },
+  };
+}
+
 export function resolveEmbeddedAgentBaseStreamFn(params: {
   session: { agent: { streamFn?: StreamFn } };
 }): StreamFn {
@@ -111,6 +129,10 @@ export function resolveEmbeddedAgentStream(
     providerStreamFn?: StreamFn;
     sessionId: string;
     promptCacheKey?: string;
+    // Fork carry: stamped onto outbound LLM requests as x-agentweave-session-key
+    // (see withAgentweaveSessionKeyHeader) so the agentweave proxy can join this
+    // run's child llm.* spans to the parent turn span. Default off.
+    sessionKey?: string;
     signal?: AbortSignal;
     model: EmbeddedRunAttemptParams["model"];
     resolvedApiKey?: string;
@@ -127,6 +149,7 @@ export function resolveEmbeddedAgentStream(
     authStorage: params.authStorage,
     providerId: params.model.provider,
     promptCacheKey: params.promptCacheKey,
+    sessionKey: params.sessionKey,
   };
   const stripCacheBoundary = (context: Parameters<StreamFn>[1]) =>
     context.systemPrompt
@@ -234,6 +257,7 @@ function wrapEmbeddedAgentStreamFn(
     providerId: string;
     sessionId?: string;
     promptCacheKey?: string;
+    sessionKey?: string;
     transformContext?: (context: Parameters<StreamFn>[1]) => Parameters<StreamFn>[1];
   },
 ): StreamFn {
@@ -257,6 +281,7 @@ function wrapEmbeddedAgentStreamFn(
     if (params.authProfileId && !merged?.authProfileId) {
       merged = { ...merged, authProfileId: params.authProfileId };
     }
+    merged = withAgentweaveSessionKeyHeader(merged, params.sessionKey);
     return signal ? { ...merged, signal } : merged;
   };
   if (!params.authStorage && !params.resolvedApiKey) {
