@@ -12,6 +12,24 @@ type EmbeddedStreamOptions = Parameters<StreamFn>[2] & {
   authProfileId?: string;
 };
 
+// Fork carry (default off): when OPENCLAW_AGENTWEAVE_SESSION_KEY_HEADER === "1",
+// stamp the run's sessionKey onto outbound LLM requests as x-agentweave-session-key.
+// The agentweave proxy joins this run's child LLM spans to the forced upstream
+// context keyed by that header (proxy _forced_session_contexts). Stock builds and
+// any other deployment leave the wire byte-for-byte unchanged.
+export function withAgentweaveSessionKeyHeader(
+  options: EmbeddedStreamOptions | undefined,
+  sessionKey: string | undefined,
+): EmbeddedStreamOptions | undefined {
+  if (!sessionKey || process.env.OPENCLAW_AGENTWEAVE_SESSION_KEY_HEADER !== "1") {
+    return options;
+  }
+  return {
+    ...options,
+    headers: { ...options?.headers, "x-agentweave-session-key": sessionKey },
+  };
+}
+
 export function resolveEmbeddedAgentBaseStreamFn(params: {
   session: { agent: { streamFn?: StreamFn } };
 }): StreamFn | undefined {
@@ -114,6 +132,7 @@ export function resolveEmbeddedAgentStreamFn(params: {
   currentStreamFn: StreamFn | undefined;
   providerStreamFn?: StreamFn;
   sessionId: string;
+  sessionKey?: string;
   signal?: AbortSignal;
   model: EmbeddedRunAttemptParams["model"];
   resolvedApiKey?: string;
@@ -127,6 +146,7 @@ export function resolveEmbeddedAgentStreamFn(params: {
       authProfileId: params.authProfileId,
       authStorage: params.authStorage,
       providerId: params.model.provider,
+      sessionKey: params.sessionKey,
       transformContext: (context) =>
         context.systemPrompt
           ? {
@@ -154,6 +174,7 @@ export function resolveEmbeddedAgentStreamFn(params: {
       authStorage: params.authStorage,
       providerId: params.model.provider,
       sessionId: params.sessionId,
+      sessionKey: params.sessionKey,
       transformContext: (context) =>
         context.systemPrompt
           ? {
@@ -185,6 +206,7 @@ export function resolveEmbeddedAgentStreamFn(params: {
         authProfileId: params.authProfileId,
         authStorage: params.authStorage,
         providerId: params.model.provider,
+        sessionKey: params.sessionKey,
       });
     }
   }
@@ -210,6 +232,7 @@ function wrapEmbeddedAgentStreamFn(
     authStorage: { getApiKey(provider: string): Promise<string | undefined> } | undefined;
     providerId: string;
     sessionId?: string;
+    sessionKey?: string;
     transformContext?: (context: Parameters<StreamFn>[1]) => Parameters<StreamFn>[1];
   },
 ): StreamFn {
@@ -225,6 +248,7 @@ function wrapEmbeddedAgentStreamFn(
     if (params.authProfileId && !merged?.authProfileId) {
       merged = { ...merged, authProfileId: params.authProfileId };
     }
+    merged = withAgentweaveSessionKeyHeader(merged, params.sessionKey);
     return signal ? { ...merged, signal } : merged;
   };
   if (!params.authStorage && !params.resolvedApiKey) {

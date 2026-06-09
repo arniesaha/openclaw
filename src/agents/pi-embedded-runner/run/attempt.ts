@@ -2903,6 +2903,7 @@ export async function runEmbeddedAttempt(
         currentStreamFn: defaultSessionStreamFn,
         providerStreamFn,
         sessionId: params.sessionId,
+        sessionKey: params.sessionKey,
         signal: runAbortController.signal,
         model: params.model,
         resolvedApiKey: params.resolvedApiKey,
