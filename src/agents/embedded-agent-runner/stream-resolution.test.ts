@@ -11,6 +11,7 @@ import {
   describeEmbeddedAgentStreamStrategy,
   resolveEmbeddedAgentApiKey,
   resolveEmbeddedAgentStreamFn,
+  withAgentweaveSessionKeyHeader,
 } from "./stream-resolution.js";
 
 // Wrap createBoundaryAwareStreamFnForModel with a spy that delegates to the
@@ -548,5 +549,56 @@ describe("resolveEmbeddedAgentStreamFn", () => {
       "codex stripped context result",
     );
     expect(result.systemPrompt).toBe("intro\ntail");
+  });
+});
+
+describe("withAgentweaveSessionKeyHeader", () => {
+  const ENV = "OPENCLAW_AGENTWEAVE_SESSION_KEY_HEADER";
+  const prev = process.env[ENV];
+
+  afterEach(() => {
+    if (prev === undefined) {
+      delete process.env[ENV];
+    } else {
+      process.env[ENV] = prev;
+    }
+  });
+
+  it("leaves options untouched when the env gate is off", () => {
+    delete process.env[ENV];
+    const options = { sessionId: "s1" };
+    expect(withAgentweaveSessionKeyHeader(options as never, "agent:main:conductor")).toBe(options);
+  });
+
+  it("stamps x-agentweave-session-key when enabled with a sessionKey", () => {
+    process.env[ENV] = "1";
+    const result = requireRecord(
+      withAgentweaveSessionKeyHeader({ sessionId: "s1" } as never, "agent:main:conductor"),
+      "stamped options",
+    );
+    expect(requireRecord(result.headers, "headers")["x-agentweave-session-key"]).toBe(
+      "agent:main:conductor",
+    );
+    expect(result.sessionId).toBe("s1");
+  });
+
+  it("does not stamp an empty header when sessionKey is absent", () => {
+    process.env[ENV] = "1";
+    const options = { sessionId: "s1" };
+    expect(withAgentweaveSessionKeyHeader(options as never, undefined)).toBe(options);
+  });
+
+  it("merges with pre-existing headers without dropping them", () => {
+    process.env[ENV] = "1";
+    const result = requireRecord(
+      withAgentweaveSessionKeyHeader(
+        { headers: { "x-existing": "keep" } } as never,
+        "agent:main:conductor",
+      ),
+      "merged options",
+    );
+    const headers = requireRecord(result.headers, "headers");
+    expect(headers["x-existing"]).toBe("keep");
+    expect(headers["x-agentweave-session-key"]).toBe("agent:main:conductor");
   });
 });
