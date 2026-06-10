@@ -3505,6 +3505,10 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           spanAttrs["openclaw.transport"] = evt.transport;
         }
         assignModelCallPromptStatsAttrs(spanAttrs, evt);
+        // Stamp the seeded clientContext (captured from session.state/message.queued)
+        // onto the span at creation. This is best-effort: if model.call.started races
+        // ahead of the seed event it misses here, but recordModelCallCompleted/Error
+        // re-resolve from the same cache, so attribution still lands on the finished span.
         assignClientContextAttributes(
           spanAttrs,
           clientContextCache.resolve(clientContextKeys(evt)),
