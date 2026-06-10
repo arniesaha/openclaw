@@ -15,6 +15,7 @@ import {
 import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
 import { registerUnhandledRejectionHandler } from "openclaw/plugin-sdk/runtime-env";
 import type { DiagnosticTraceContext, OpenClawPluginService } from "../api.js";
+import { createClientContextCache } from "./client-context-attributes.js";
 import {
   DEFAULT_SERVICE_NAME,
   OTEL_EXPORTER_OTLP_ENDPOINT_ENV,
@@ -557,7 +558,13 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         ? active.traceProvider.getTracer("openclaw")
         : trace.getTracer("openclaw");
       const diagnosticsTrace = createDiagnosticsTraceRuntime(tracer);
-      active.stopActiveTrustedSpans = diagnosticsTrace.stopActiveTrustedSpans;
+      // The cache outlives individual spans, so it must be cleared with them or it leaks
+      // clientContext bags for sessions that ended.
+      const clientContextCache = createClientContextCache();
+      active.stopActiveTrustedSpans = () => {
+        diagnosticsTrace.stopActiveTrustedSpans();
+        clientContextCache.clear();
+      };
       const diagnosticMetrics = createDiagnosticsMetrics(meter, otel.metricNamePrefix);
 
       const diagnosticsLogs = createDiagnosticsLogExporter({
@@ -578,6 +585,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       const { recordLogRecord, recordSecurityEvent } = diagnosticsLogs;
 
       const recorderRuntime = createDiagnosticsRecorderRuntime({
+        clientContextCache,
         contentCapturePolicy,
         metrics: diagnosticMetrics,
         traces: diagnosticsTrace,
@@ -593,6 +601,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
 
       active.unsubscribe = subscribe(
         createDiagnosticsEventHandler({
+          clientContextCache,
           logger: ctx.logger,
           recorders,
           recordLogRecord,
