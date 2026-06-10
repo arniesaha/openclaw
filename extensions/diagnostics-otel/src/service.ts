@@ -35,6 +35,11 @@ import {
   isValidDiagnosticTraceId,
   redactSensitiveText,
 } from "../api.js";
+import {
+  assignClientContextAttributes,
+  clientContextKeys,
+  createClientContextCache,
+} from "./client-context-attributes.js";
 
 const DEFAULT_SERVICE_NAME = "openclaw";
 const DROPPED_OTEL_ATTRIBUTE_KEYS = new Set([
@@ -894,11 +899,7 @@ function assignOtelModelContentAttributes(
     );
   }
   if (policy.systemPrompt) {
-    assignOtelContentAttribute(
-      attributes,
-      "openclaw.content.system_prompt",
-      content?.systemPrompt,
-    );
+    assignOtelContentAttribute(attributes, "openclaw.content.system_prompt", content?.systemPrompt);
   }
 }
 
@@ -1234,6 +1235,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       const activeTrustedSpans = new Map<string, ReturnType<typeof tracer.startSpan>>();
       const activeTrustedSpanAliases = new Map<string, ReturnType<typeof tracer.startSpan>>();
       const pendingTrustedRunFinalizers = new Map<string, ReturnType<typeof setImmediate>>();
+      const clientContextCache = createClientContextCache();
       stopActiveTrustedSpans = () => {
         const stopAt = Date.now();
         for (const handle of pendingTrustedRunFinalizers.values()) {
@@ -1248,6 +1250,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         }
         activeTrustedSpans.clear();
         activeTrustedSpanAliases.clear();
+        clientContextCache.clear();
       };
 
       const tokensCounter = meter.createCounter("openclaw.tokens", {
@@ -1463,13 +1466,10 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           description: "Tool execution duration",
         },
       );
-      const toolExecutionBlockedCounter = meter.createCounter(
-        "openclaw.tool.execution.blocked",
-        {
-          unit: "1",
-          description: "Tool executions blocked by policy or sandbox diagnostics",
-        },
-      );
+      const toolExecutionBlockedCounter = meter.createCounter("openclaw.tool.execution.blocked", {
+        unit: "1",
+        description: "Tool executions blocked by policy or sandbox diagnostics",
+      });
       const execProcessDurationHistogram = meter.createHistogram("openclaw.exec.duration_ms", {
         unit: "ms",
         description: "Exec process duration",
@@ -2601,6 +2601,10 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         if (evt.transport) {
           spanAttrs["openclaw.transport"] = evt.transport;
         }
+        assignClientContextAttributes(
+          spanAttrs,
+          clientContextCache.resolve(clientContextKeys(evt)),
+        );
         trackTrustedSpan(
           evt,
           metadata,
@@ -2640,6 +2644,10 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         }
         assignModelCallSizeTimingAttrs(spanAttrs, evt);
         assignOtelModelContentAttributes(spanAttrs, modelContent, contentCapturePolicy);
+        assignClientContextAttributes(
+          spanAttrs,
+          clientContextCache.resolve(clientContextKeys(evt)),
+        );
         const span =
           takeTrackedTrustedSpan(evt, metadata) ??
           spanWithDuration(modelCallSpanName(evt), spanAttrs, evt.durationMs, {
@@ -2692,6 +2700,10 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         }
         assignModelCallSizeTimingAttrs(spanAttrs, evt);
         assignOtelModelContentAttributes(spanAttrs, modelContent, contentCapturePolicy);
+        assignClientContextAttributes(
+          spanAttrs,
+          clientContextCache.resolve(clientContextKeys(evt)),
+        );
         const span =
           takeTrackedTrustedSpan(evt, metadata) ??
           spanWithDuration(modelCallSpanName(evt), spanAttrs, evt.durationMs, {
@@ -3064,6 +3076,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
               recordWebhookError(evt);
               return;
             case "message.queued":
+              clientContextCache.remember(clientContextKeys(evt), privateData.clientContext);
               recordMessageQueued(evt);
               return;
             case "message.received":
@@ -3097,6 +3110,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
               recordLaneDequeue(evt);
               return;
             case "session.state":
+              clientContextCache.remember(clientContextKeys(evt), privateData.clientContext);
               recordSessionState(evt);
               return;
             case "session.long_running":
