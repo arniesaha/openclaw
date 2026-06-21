@@ -1,3 +1,4 @@
+import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { retireSessionMcpRuntime } from "../../agents/agent-bundle-mcp-tools.js";
 import { withPreparedModelRuntimePluginGenerationScope } from "../../agents/prepared-model-runtime-generation-scope.js";
 import type { PreparedModelRuntimeLease } from "../../agents/prepared-model-runtime.types.js";
@@ -46,6 +47,27 @@ import type { RunCronAgentTurnResult } from "./run.types.js";
 import { cleanupCronRunSessionAfterRun } from "./session-cleanup.js";
 
 const cronExecutorRuntimeLoader = createLazyImportLoader(() => import("./run-executor.runtime.js"));
+
+// Fork carry: seeds the diagnostic lifecycle with a bounded, whitespace-folded
+// preview of the cron prompt so agentweave can label the turn. Capped at 1000
+// chars because the preview rides a span attribute, not a payload channel.
+function buildCronDiagnosticInputPreview(job: CronStoredJob): string | undefined {
+  const raw =
+    job.payload.kind === "agentTurn"
+      ? normalizeOptionalString(job.payload.message)
+      : normalizeOptionalString(job.name);
+  if (!raw) {
+    return undefined;
+  }
+  const normalized = raw.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return undefined;
+  }
+  const maxChars = 1000;
+  return normalized.length <= maxChars
+    ? normalized
+    : `${normalized.slice(0, maxChars - 1).trimEnd()}…`;
+}
 
 function isCronNestedLaneTaskTimeoutError(err: unknown): boolean {
   return isCommandLaneTaskTimeoutError(err, CommandLane.CronNested);
@@ -186,6 +208,8 @@ export async function runCronIsolatedAgentTurn(params: {
         sessionKey: prepared.context.runSessionKey,
         channel: "cron",
         source: "cron-isolated",
+        inputPreview: buildCronDiagnosticInputPreview(params.job),
+        taskLabel: params.job.name,
         startedAtMs: turnStartedAtMs,
         trackSessionState: true,
       });
