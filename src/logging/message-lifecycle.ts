@@ -21,6 +21,8 @@ export function createDiagnosticMessageLifecycle(
     source: string;
     chatId?: number | string;
     messageId?: number | string;
+    inputPreview?: string;
+    taskLabel?: string;
     processingReason?: string;
     startedAtMs?: number;
     trackSessionState: boolean;
@@ -49,12 +51,15 @@ export function createDiagnosticMessageLifecycle(
         sessionKey: ref.sessionKey,
         channel: params.channel,
         source: params.source,
+        inputPreview: params.inputPreview,
       });
       logSessionStateChange({
         sessionId: ref.sessionId,
         sessionKey: ref.sessionKey,
         state: "processing",
         reason: params.processingReason,
+        inputPreview: params.inputPreview,
+        taskLabel: params.taskLabel,
       });
     },
 

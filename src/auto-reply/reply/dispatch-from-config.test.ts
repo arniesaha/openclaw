@@ -5973,11 +5973,13 @@ describe("dispatchReplyFromConfig", () => {
       }),
     );
     expect(diagnosticMocks.logMessageQueued).toHaveBeenCalledTimes(1);
-    expect(diagnosticMocks.logSessionStateChange).toHaveBeenCalledWith({
-      sessionKey: "agent:main:main",
-      state: "processing",
-      reason: "message_start",
-    });
+    expect(diagnosticMocks.logSessionStateChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionKey: "agent:main:main",
+        state: "processing",
+        reason: "message_start",
+      }),
+    );
     const processedEvent = firstMockArg(
       diagnosticMocks.logMessageProcessed,
       "message processed",
@@ -6012,12 +6014,14 @@ describe("dispatchReplyFromConfig", () => {
         sessionKey: "agent:main:main",
       }),
     );
-    expect(diagnosticMocks.logSessionStateChange).toHaveBeenCalledWith({
-      sessionId: "test-uuid-1234",
-      sessionKey: "agent:main:main",
-      state: "processing",
-      reason: "message_start",
-    });
+    expect(diagnosticMocks.logSessionStateChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "test-uuid-1234",
+        sessionKey: "agent:main:main",
+        state: "processing",
+        reason: "message_start",
+      }),
+    );
   });
 
   it("does not stamp a command target's UUID under the source session key", async () => {
@@ -6051,6 +6055,34 @@ describe("dispatchReplyFromConfig", () => {
       | undefined;
     expect(queued?.sessionKey).toBe("agent:main:source-convo");
     expect(queued?.sessionId).toBeUndefined();
+  });
+
+  it("adds a sanitized user input preview to interactive diagnostic lifecycle events", async () => {
+    setNoAbort();
+    const cfg = { diagnostics: { enabled: true } } as OpenClawConfig;
+    const dispatcher = createDispatcher();
+    const ctx = buildTestCtx({
+      Provider: "telegram",
+      Surface: "telegram",
+      SessionKey: "agent:main:main",
+      CommandBody: "  Check   AgentWeave\ntraces now  ",
+      RawBody: "fallback body",
+      To: "telegram:123",
+    });
+
+    const replyResolver = async () => ({ text: "hi" }) satisfies ReplyPayload;
+    await dispatchReplyFromConfig({ ctx, cfg, dispatcher, replyResolver });
+
+    expect(diagnosticMocks.logMessageQueued).toHaveBeenCalledWith(
+      expect.objectContaining({
+        inputPreview: "Check AgentWeave traces now",
+      }),
+    );
+    expect(diagnosticMocks.logSessionStateChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        inputPreview: "Check AgentWeave traces now",
+      }),
+    );
   });
 
   it("marks diagnostic progress for real reply events but not reply start callbacks", async () => {
