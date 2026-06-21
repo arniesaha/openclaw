@@ -8,6 +8,7 @@ import type { DiagnosticClientContext } from "../infra/diagnostic-client-context
 import {
   areDiagnosticsEnabledForProcess,
   emitInternalDiagnosticEvent as emitDiagnosticEvent,
+  emitInternalDiagnosticEventWithPrivateData,
   isDiagnosticsEnabled,
   type DiagnosticPhaseSnapshot,
   type DiagnosticLivenessWarningReason,
@@ -687,16 +688,24 @@ export function logMessageQueued(params: {
       } source=${params.source} queueDepth=${state.queueDepth} sessionState=${state.state}`,
     );
   }
-  emitDiagnosticEvent({
-    type: "message.queued",
+  const queuedEvent = {
+    type: "message.queued" as const,
     sessionId: state.sessionId,
     sessionKey: state.sessionKey,
     channel: params.channel,
     source: params.source,
     queueDepth: state.queueDepth,
     inputPreview: params.inputPreview,
-    clientContext: state.clientContext,
-  });
+  };
+  // clientContext rides the trusted privateData channel (onTrustedDiagnosticEvent),
+  // never the public payload — keeps the event's public contract unchanged.
+  if (state.clientContext) {
+    emitInternalDiagnosticEventWithPrivateData(queuedEvent, {
+      clientContext: state.clientContext,
+    });
+  } else {
+    emitDiagnosticEvent(queuedEvent);
+  }
   markActivity();
 }
 
@@ -912,8 +921,8 @@ export function logSessionStateChange(
       }`,
     );
   }
-  emitDiagnosticEvent({
-    type: "session.state",
+  const stateEvent = {
+    type: "session.state" as const,
     sessionId: state.sessionId,
     sessionKey: state.sessionKey,
     prevState,
@@ -922,8 +931,16 @@ export function logSessionStateChange(
     queueDepth: state.queueDepth,
     inputPreview: params.inputPreview,
     taskLabel: params.taskLabel,
-    clientContext: state.clientContext,
-  });
+  };
+  // clientContext rides the trusted privateData channel (onTrustedDiagnosticEvent),
+  // never the public payload — keeps the event's public contract unchanged.
+  if (state.clientContext) {
+    emitInternalDiagnosticEventWithPrivateData(stateEvent, {
+      clientContext: state.clientContext,
+    });
+  } else {
+    emitDiagnosticEvent(stateEvent);
+  }
   markActivity();
 }
 
