@@ -4547,11 +4547,13 @@ describe("dispatchReplyFromConfig", () => {
       }),
     );
     expect(diagnosticMocks.logMessageQueued).toHaveBeenCalledTimes(1);
-    expect(diagnosticMocks.logSessionStateChange).toHaveBeenCalledWith({
-      sessionKey: "agent:main:main",
-      state: "processing",
-      reason: "message_start",
-    });
+    expect(diagnosticMocks.logSessionStateChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionKey: "agent:main:main",
+        state: "processing",
+        reason: "message_start",
+      }),
+    );
     const processedEvent = firstMockArg(
       diagnosticMocks.logMessageProcessed,
       "message processed",
@@ -4559,6 +4561,69 @@ describe("dispatchReplyFromConfig", () => {
     expect(processedEvent?.channel).toBe("slack");
     expect(processedEvent?.outcome).toBe("completed");
     expect(processedEvent?.sessionKey).toBe("agent:main:main");
+  });
+
+  it("carries the session store UUID on interactive diagnostic events", async () => {
+    setNoAbort();
+    sessionStoreMocks.currentEntry = {
+      sessionId: "test-uuid-1234",
+    };
+    const cfg = { diagnostics: { enabled: true } } as OpenClawConfig;
+    const dispatcher = createDispatcher();
+    const ctx = buildTestCtx({
+      Provider: "slack",
+      Surface: "slack",
+      SessionKey: "agent:main:main",
+      MessageSid: "msg-1",
+      To: "slack:C123",
+    });
+
+    const replyResolver = async () => ({ text: "hi" }) satisfies ReplyPayload;
+    await dispatchReplyFromConfig({ ctx, cfg, dispatcher, replyResolver });
+
+    expect(diagnosticMocks.logMessageQueued).toHaveBeenCalledTimes(1);
+    expect(diagnosticMocks.logMessageQueued).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "test-uuid-1234",
+        sessionKey: "agent:main:main",
+      }),
+    );
+    expect(diagnosticMocks.logSessionStateChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "test-uuid-1234",
+        sessionKey: "agent:main:main",
+        state: "processing",
+        reason: "message_start",
+      }),
+    );
+  });
+
+  it("adds a sanitized user input preview to interactive diagnostic lifecycle events", async () => {
+    setNoAbort();
+    const cfg = { diagnostics: { enabled: true } } as OpenClawConfig;
+    const dispatcher = createDispatcher();
+    const ctx = buildTestCtx({
+      Provider: "telegram",
+      Surface: "telegram",
+      SessionKey: "agent:main:main",
+      CommandBody: "  Check   AgentWeave\ntraces now  ",
+      RawBody: "fallback body",
+      To: "telegram:123",
+    });
+
+    const replyResolver = async () => ({ text: "hi" }) satisfies ReplyPayload;
+    await dispatchReplyFromConfig({ ctx, cfg, dispatcher, replyResolver });
+
+    expect(diagnosticMocks.logMessageQueued).toHaveBeenCalledWith(
+      expect.objectContaining({
+        inputPreview: "Check AgentWeave traces now",
+      }),
+    );
+    expect(diagnosticMocks.logSessionStateChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        inputPreview: "Check AgentWeave traces now",
+      }),
+    );
   });
 
   it("marks diagnostic progress for real reply events but not reply start callbacks", async () => {

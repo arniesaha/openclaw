@@ -783,6 +783,25 @@ function createAbortAwareDispatcher(params: {
   return dispatcher;
 }
 
+function buildDiagnosticInputPreview(ctx: FinalizedMsgContext): string | undefined {
+  const raw =
+    normalizeOptionalString(ctx.BodyForCommands) ??
+    normalizeOptionalString(ctx.CommandBody) ??
+    normalizeOptionalString(ctx.RawBody) ??
+    normalizeOptionalString(ctx.Body);
+  if (!raw) {
+    return undefined;
+  }
+  const normalized = raw.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return undefined;
+  }
+  const maxChars = 1000;
+  return normalized.length <= maxChars
+    ? normalized
+    : `${normalized.slice(0, maxChars - 1).trimEnd()}…`;
+}
+
 export type {
   DispatchFromConfigParams,
   DispatchFromConfigResult,
@@ -806,12 +825,27 @@ export async function dispatchReplyFromConfig(
     normalizeOptionalString(ctx.SessionKey) ?? normalizeOptionalString(ctx.CommandTargetSessionKey);
   const startTime = diagnosticsEnabled ? Date.now() : 0;
   const canTrackSession = diagnosticsEnabled && Boolean(sessionKey);
+  const initialSessionStoreEntry = resolveSessionStoreLookup(ctx, cfg);
+  // resolveSessionStoreLookup is command-target-aware (it prefers
+  // resolveCommandTurnTargetSessionKey), whereas the lifecycle's sessionKey is
+  // source-first (ctx.SessionKey). On a native command turn that targets a
+  // different session, the resolved entry can belong to the *target* while the
+  // lifecycle reports the *source* key — so only carry the UUID when the entry
+  // is for the same session the lifecycle reports, to avoid mis-associating a
+  // session id with the wrong session key. When they diverge, emit sessionKey
+  // only (prior behavior).
+  const lifecycleSessionId =
+    initialSessionStoreEntry.sessionKey === sessionKey
+      ? initialSessionStoreEntry.entry?.sessionId
+      : undefined;
   const messageLifecycle = createDiagnosticMessageLifecycle({
     enabled: diagnosticsEnabled,
     channel,
     chatId,
     messageId,
     sessionKey,
+    sessionId: lifecycleSessionId,
+    inputPreview: buildDiagnosticInputPreview(ctx),
     source: "dispatch",
     processingReason: "message_start",
     startedAtMs: startTime,
@@ -886,7 +920,6 @@ export async function dispatchReplyFromConfig(
     inboundDedupeReplayUnsafe = true;
   };
 
-  const initialSessionStoreEntry = resolveSessionStoreLookup(ctx, cfg);
   const boundAcpDispatchSessionKey = resolveBoundAcpDispatchSessionKey({ ctx, cfg });
   const acpDispatchSessionKey =
     boundAcpDispatchSessionKey ?? initialSessionStoreEntry.sessionKey ?? sessionKey;

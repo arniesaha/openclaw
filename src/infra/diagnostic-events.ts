@@ -92,7 +92,6 @@ export type DiagnosticMessageQueuedEvent = DiagnosticBaseEvent & {
   source: string;
   queueDepth?: number;
   inputPreview?: string;
-  clientContext?: DiagnosticClientContext;
 };
 
 export type DiagnosticMessageReceivedEvent = DiagnosticBaseEvent & {
@@ -187,7 +186,6 @@ export type DiagnosticSessionStateEvent = DiagnosticBaseEvent & {
   queueDepth?: number;
   inputPreview?: string;
   taskLabel?: string;
-  clientContext?: DiagnosticClientContext;
 };
 
 export type DiagnosticSessionActiveWorkKind = "embedded_run" | "model_call" | "tool_call";
@@ -721,6 +719,10 @@ export type DiagnosticModelCallContent = Readonly<{
 
 export type DiagnosticEventPrivateData = Readonly<{
   modelContent?: DiagnosticModelCallContent;
+  // Opaque, caller-supplied attribution bag seeded onto the run. Withheld from
+  // public listeners (it rides the trusted privateData channel, not the event
+  // payload) so lifecycle events keep their queue/state-only public contract.
+  clientContext?: DiagnosticClientContext;
 }>;
 
 type DiagnosticEventListener = (
@@ -1101,6 +1103,22 @@ export function emitDiagnosticEvent(event: DiagnosticEventInput) {
   emitDiagnosticEventWithTrust(event, false);
 }
 
+/**
+ * Emit an internal, untrusted event that additionally carries `privateData` to
+ * trusted listeners only. The event payload reaches public subscribers exactly
+ * as the matching {@link emitInternalDiagnosticEvent} call would; the
+ * `privateData` argument is withheld from them by {@link dispatchDiagnosticEvent}.
+ * Used for lifecycle events (`session.state` / `message.queued`) that must keep
+ * their public payload unchanged but forward opt-in attribution
+ * (`clientContext`) to trusted observers via {@link onTrustedDiagnosticEvent}.
+ */
+export function emitInternalDiagnosticEventWithPrivateData(
+  event: DiagnosticEventInput,
+  privateData: DiagnosticEventPrivateData,
+) {
+  emitDiagnosticEventWithTrust(event, false, { internal: true, privateData });
+}
+
 export function emitInternalDiagnosticEvent(event: DiagnosticEventInput) {
   emitDiagnosticEventWithTrust(event, false, { internal: true });
 }
@@ -1228,6 +1246,40 @@ export function onModelDiagnosticEvent(
       return;
     }
     listener(event);
+  });
+}
+
+/**
+ * Lifecycle event types over which the runtime forwards opt-in `privateData`
+ * (currently `clientContext`) to {@link onTrustedDiagnosticEvent} subscribers.
+ *
+ * These events are emitted *untrusted* (their public payload is unchanged), so
+ * the allowlist — not the `trusted` flag — is what scopes private delivery.
+ */
+const PLUGIN_VISIBLE_TRUSTED_PRIVATE_EVENT_TYPES: ReadonlySet<DiagnosticEventPayload["type"]> =
+  new Set<DiagnosticEventPayload["type"]>(["session.state", "message.queued"]);
+
+/**
+ * Plugin-facing subscription to the lifecycle events that carry opt-in
+ * `privateData` (e.g. a seeded `clientContext` attribution bag).
+ *
+ * Unlike {@link onModelDiagnosticEvent}, this registers on the *trusted*
+ * listener set — the only dispatch path that receives the `privateData`
+ * argument. The carrying events are emitted untrusted (their public payload is
+ * unchanged and still reaches {@link onDiagnosticEvent}), so this listener must
+ * NOT gate on `metadata.trusted`; the {@link PLUGIN_VISIBLE_TRUSTED_PRIVATE_EVENT_TYPES}
+ * allowlist scopes delivery instead. `privateData` is delivered only here and
+ * never to public subscribers, keeping lifecycle events' public privacy and
+ * cardinality contract intact.
+ */
+export function onTrustedDiagnosticEvent(
+  listener: (evt: DiagnosticEventPayload, privateData: DiagnosticEventPrivateData) => void,
+): () => void {
+  return onTrustedInternalDiagnosticEvent((event, _metadata, privateData) => {
+    if (!PLUGIN_VISIBLE_TRUSTED_PRIVATE_EVENT_TYPES.has(event.type)) {
+      return;
+    }
+    listener(event, privateData);
   });
 }
 
