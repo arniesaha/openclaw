@@ -1501,7 +1501,6 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         { spanContext: SpanContext; token: symbol; owner?: TrustedSpanAliasOwner }
       >();
       const retainedTrustedSpanContextCleanupTimers = new Set<ReturnType<typeof setTimeout>>();
-      const pendingTrustedRunFinalizers = new Map<string, ReturnType<typeof setImmediate>>();
       const clientContextCache = createClientContextCache();
       stopActiveTrustedSpans = () => {
         const stopAt = Date.now();
