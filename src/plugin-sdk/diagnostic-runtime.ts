@@ -52,6 +52,7 @@ export {
   onInternalDiagnosticEvent,
   onDiagnosticEvent,
   onModelDiagnosticEvent,
+  onTrustedDiagnosticEvent,
   resetDiagnosticEventsForTest,
   waitForDiagnosticEventsDrained,
 } from "../infra/diagnostic-events.js";
