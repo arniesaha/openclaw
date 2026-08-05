@@ -726,7 +726,7 @@ public final class OpenClawChatViewModel {
             result.append(message)
         }
 
-        return result
+        return Self.dedupeAdjacentAssistantTextMessages(result)
     }
 
     private static func dedupeKey(for message: OpenClawChatMessage) -> String? {
@@ -735,6 +735,92 @@ public final class OpenClawChatViewModel {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
         return "\(message.role)|\(timestamp)|\(text)"
+    }
+
+    private static func dedupeAdjacentAssistantTextMessages(
+        _ messages: [OpenClawChatMessage]) -> [OpenClawChatMessage]
+    {
+        var result: [OpenClawChatMessage] = []
+        result.reserveCapacity(messages.count)
+
+        for message in messages {
+            guard let last = result.last,
+                  Self.isSameAdjacentAssistantTextMessage(last, message)
+            else {
+                result.append(message)
+                continue
+            }
+
+            if Self.prefersAssistantTextMessage(message, over: last) {
+                result[result.count - 1] = message
+            }
+        }
+
+        return result
+    }
+
+    private static func isSameAdjacentAssistantTextMessage(
+        _ lhs: OpenClawChatMessage,
+        _ rhs: OpenClawChatMessage) -> Bool
+    {
+        guard Self.isAssistantMessage(lhs), Self.isAssistantMessage(rhs) else { return false }
+        guard let lhsKey = Self.assistantTextDedupeKey(for: lhs),
+              lhsKey == Self.assistantTextDedupeKey(for: rhs)
+        else {
+            return false
+        }
+
+        guard let leftTimestamp = lhs.timestamp,
+              let rightTimestamp = rhs.timestamp
+        else {
+            return true
+        }
+        return abs(rightTimestamp - leftTimestamp) <= 5 * 60 * 1000
+    }
+
+    private static func prefersAssistantTextMessage(
+        _ candidate: OpenClawChatMessage,
+        over current: OpenClawChatMessage) -> Bool
+    {
+        let candidateHasTrace = Self.hasToolTrace(candidate)
+        let currentHasTrace = Self.hasToolTrace(current)
+        if candidateHasTrace != currentHasTrace {
+            return !candidateHasTrace
+        }
+        return (candidate.timestamp ?? 0) >= (current.timestamp ?? 0)
+    }
+
+    private static func assistantTextDedupeKey(for message: OpenClawChatMessage) -> String? {
+        let text = message.content.compactMap { content -> String? in
+            let kind = (content.type ?? "text").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard kind == "text" || kind.isEmpty else { return nil }
+            return content.text
+        }
+        .joined(separator: "\n")
+        .split(whereSeparator: \.isWhitespace)
+        .joined(separator: " ")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? nil : text
+    }
+
+    private static func hasToolTrace(_ message: OpenClawChatMessage) -> Bool {
+        if let toolCallId = message.toolCallId?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !toolCallId.isEmpty
+        {
+            return true
+        }
+        if let toolName = message.toolName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !toolName.isEmpty
+        {
+            return true
+        }
+        return message.content.contains { content in
+            let kind = (content.type ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if ["toolcall", "tool_call", "tooluse", "tool_use", "toolresult", "tool_result"].contains(kind) {
+                return true
+            }
+            return content.name != nil && content.arguments != nil
+        }
     }
 
     private static let resetTriggers: Set<String> = ["/reset", "/clear"]

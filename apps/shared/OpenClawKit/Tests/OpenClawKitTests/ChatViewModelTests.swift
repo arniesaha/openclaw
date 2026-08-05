@@ -1393,6 +1393,65 @@ struct ChatViewModelTests {
         }
     }
 
+    @Test func `dedupes adjacent assistant echo from session message and final event`() async throws {
+        let now = Date().timeIntervalSince1970 * 1000
+        let (transport, vm) = await makeViewModel(historyResponses: [historyPayload()])
+
+        await MainActor.run { vm.load() }
+        try await waitUntil("bootstrap history loaded") { await MainActor.run { vm.messages.isEmpty } }
+
+        transport.emit(
+            .sessionMessage(
+                OpenClawSessionMessageEventPayload(
+                    sessionKey: "agent:main:main",
+                    message: OpenClawChatMessage(
+                        role: "assistant",
+                        content: [
+                            OpenClawChatMessageContent(
+                                type: "text",
+                                text: "same assistant reply",
+                                mimeType: nil,
+                                fileName: nil,
+                                content: nil),
+                            OpenClawChatMessageContent(
+                                type: "tool_call",
+                                text: nil,
+                                mimeType: nil,
+                                fileName: nil,
+                                content: nil,
+                                id: "tool-1",
+                                name: "bash",
+                                arguments: AnyCodable(["cmd": "date"])),
+                        ],
+                        timestamp: now),
+                    messageId: "msg-assistant-traced",
+                    messageSeq: 2)))
+
+        try await waitUntil("traced assistant transcript visible") {
+            await MainActor.run { vm.messages.count == 1 }
+        }
+
+        transport.emit(
+            .chat(
+                OpenClawChatEventPayload(
+                    runId: "external-final",
+                    sessionKey: "agent:main:main",
+                    state: "final",
+                    message: AnyCodable([
+                        "role": "assistant",
+                        "content": [["type": "text", "text": "same assistant reply"]],
+                        "timestamp": now + 1000,
+                    ]),
+                    errorMessage: nil)))
+
+        try await Task.sleep(nanoseconds: 50_000_000)
+        #expect(await MainActor.run {
+            vm.messages.count == 1 &&
+                vm.messages.first?.content.count == 1 &&
+                vm.messages.first?.content.first?.text == "same assistant reply"
+        })
+    }
+
     @Test func `dedupes gateway echo of local user message`() async throws {
         let (transport, vm) = await makeViewModel(historyResponses: [historyPayload()])
 
