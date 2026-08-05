@@ -35,6 +35,15 @@ This fork carries patches that are not yet on `upstream/main`. **If you rebase a
 - Also lives on the branch `feat/model-call-completed-usage` in this checkout.
 - **Why it matters**: the `agentweave-bridge` plugin in `~/.openclaw/user-plugins/agentweave-bridge/` subscribes to `onModelDiagnosticEvent` to enrich codex turn spans with `prov.llm.{provider,model}`. Without this export, codex turns (Nix on `openai/gpt-5.5`, formerly `openai-codex/gpt-5.5` pre-v2026.6.9) land in AgentWeave/Tempo bucketed as **"unknown"**. The bridge logs a startup warning when the export is missing — see verification below.
 
+### Patch: iOS assistant-bubble dedupe (OpenClawKit)
+
+- **Upstream status**: never proposed. Fork-local client-side fix.
+- **Local presence**: commit `7e363239b0e` ("fix(ios): collapse duplicate adjacent assistant text bubbles in chat transcript") on `upgrade/v2026.6.9`. Touches `apps/shared/OpenClawKit/Sources/OpenClawChatUI/ChatViewModel.swift` (+87/-1) and `apps/shared/OpenClawKit/Tests/OpenClawKitTests/ChatViewModelTests.swift` (+59).
+- **Why it matters**: found while using the **official OpenClaw iOS app** against this fork's gateway. An assistant reply arrives on two delivery paths — a `sessionMessage` carrying the traced transcript (text plus the `tool_call` blocks that produced it), and a `chat` event with `state: "final"` carrying only the plain text. Both events are legitimate, so neither can be suppressed gateway-side; the app rendered **two visually identical assistant bubbles**.
+- **Mechanism**: `dedupeAdjacentAssistantTextMessages` runs as a final pass in `ChatViewModel`. Adjacent assistant messages collapse when their whitespace-folded text-block content matches and timestamps are within **5 minutes** (the window stops a genuinely repeated reply later in the conversation from being swallowed; both-timestamps-absent is treated as the same message, since duplicate delivery is the only way that shape occurs). On collapse it keeps the variant **without** a tool trace — the clean `final` text — because the traced variant's tool blocks already have their own transcript rows.
+- **⚠️ UNVERIFIED**: committed without ever being compiled or run. The NAS has no Swift toolchain (`swift`/`swiftc`/`xcodebuild` all absent), so `ChatViewModelTests` has never executed. **Run the OpenClawKit suite on macOS before trusting this.** Per root `AGENTS.md`, check real iOS devices before simulator.
+- **Rebase risk**: `ChatViewModel.swift` is upstream-owned and actively changed. Expect conflicts on hops; the carry is `pin = true` in the fork-upgrade manifest so it is never auto-skipped.
+
 ### Sanity check on every restart
 
 After `pnpm run build` + restart, confirm BOTH lines appear in the gateway log:
