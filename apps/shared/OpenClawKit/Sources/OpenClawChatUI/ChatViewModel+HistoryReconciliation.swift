@@ -657,7 +657,7 @@ extension OpenClawChatViewModel {
             result.append(message)
         }
 
-        return result
+        return Self.dedupeAdjacentAssistantTextMessages(result)
     }
 
     static func dedupeKey(for message: OpenClawChatMessage) -> String? {
@@ -669,5 +669,106 @@ extension OpenClawChatViewModel {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
         return "\(message.role)|\(timestamp)|\(text)"
+    }
+
+    // Fork carry: the same assistant reply reaches the client on two delivery
+    // paths -- a `sessionMessage` carrying the traced transcript (text plus the
+    // tool_call blocks that produced it), and a `chat` event with state "final"
+    // carrying only the plain text. Upstream's finalMessageReconciliationKey
+    // fingerprints (type, text) per content block, so the traced variant's
+    // tool_call block makes the two keys differ and the pair survives unless the
+    // gateway happened to set a shared idempotencyKey. Without this pass the
+    // transcript can show the same assistant message twice.
+    private static func dedupeAdjacentAssistantTextMessages(
+        _ messages: [OpenClawChatMessage]) -> [OpenClawChatMessage]
+    {
+        var result: [OpenClawChatMessage] = []
+        result.reserveCapacity(messages.count)
+
+        for message in messages {
+            guard let last = result.last,
+                  Self.isSameAdjacentAssistantTextMessage(last, message)
+            else {
+                result.append(message)
+                continue
+            }
+
+            if Self.prefersAssistantTextMessage(message, over: last) {
+                result[result.count - 1] = message
+            }
+        }
+
+        return result
+    }
+
+    private static func isSameAdjacentAssistantTextMessage(
+        _ lhs: OpenClawChatMessage,
+        _ rhs: OpenClawChatMessage) -> Bool
+    {
+        guard Self.isAssistantMessage(lhs), Self.isAssistantMessage(rhs) else { return false }
+        guard let lhsKey = Self.assistantTextDedupeKey(for: lhs),
+              lhsKey == Self.assistantTextDedupeKey(for: rhs)
+        else {
+            return false
+        }
+
+        // Both timestamps missing means duplicate delivery -- the only way two
+        // adjacent assistant messages carry identical text and no time at all.
+        guard let leftTimestamp = lhs.timestamp,
+              let rightTimestamp = rhs.timestamp
+        else {
+            return true
+        }
+        // Bounded window so a genuinely repeated reply later in the conversation
+        // is still rendered rather than swallowed.
+        return abs(rightTimestamp - leftTimestamp) <= 5 * 60 * 1000
+    }
+
+    private static func prefersAssistantTextMessage(
+        _ candidate: OpenClawChatMessage,
+        over current: OpenClawChatMessage) -> Bool
+    {
+        // Keep the untraced variant: the "final" event's clean text is what the
+        // user should read, and the traced variant's tool blocks already have
+        // their own transcript rows.
+        let candidateHasTrace = Self.hasToolTrace(candidate)
+        let currentHasTrace = Self.hasToolTrace(current)
+        if candidateHasTrace != currentHasTrace {
+            return !candidateHasTrace
+        }
+        return (candidate.timestamp ?? 0) >= (current.timestamp ?? 0)
+    }
+
+    private static func assistantTextDedupeKey(for message: OpenClawChatMessage) -> String? {
+        let text = message.content.compactMap { content -> String? in
+            let kind = (content.type ?? "text").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard kind == "text" || kind.isEmpty else { return nil }
+            return content.text
+        }
+        .joined(separator: "\n")
+        .split(whereSeparator: \.isWhitespace)
+        .joined(separator: " ")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? nil : text
+    }
+
+    private static func hasToolTrace(_ message: OpenClawChatMessage) -> Bool {
+        if let toolCallId = message.toolCallId?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !toolCallId.isEmpty
+        {
+            return true
+        }
+        if let toolName = message.toolName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !toolName.isEmpty
+        {
+            return true
+        }
+        return message.content.contains { content in
+            let kind = (content.type ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if ["toolcall", "tool_call", "tooluse", "tool_use", "toolresult", "tool_result"].contains(kind) {
+                return true
+            }
+            return content.name != nil && content.arguments != nil
+        }
     }
 }
