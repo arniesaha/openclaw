@@ -11,8 +11,15 @@ These are notes specific to *this* checkout — Arnab's openclaw fork running as
 | systemd unit | `openclaw-gateway.service` (user-level) |
 | Restart cmd | `systemctl --user restart openclaw-gateway.service` |
 | Logs | `journalctl --user -u openclaw-gateway.service -n 100 --no-pager` |
-| Node | 22.x via `~/.nvm/versions/node/v22.22.1/bin/` — `export PATH=~/.nvm/versions/node/v22.22.1/bin:$PATH` before `pnpm` |
+| Node | **24.19.0** via `~/.nvm/versions/node/v24.19.0/bin/` — `export PATH=~/.nvm/versions/node/v24.19.0/bin:$PATH` before `pnpm`. The systemd unit pins the same interpreter in both `ExecStart` and its `Environment=PATH`. |
+| pnpm | 11.2.2, resolved through `corepack` under Node 24.19.0 (matches the repo's `packageManager` pin). If `pnpm: command not found` after a Node upgrade, run `corepack enable` for the new version — nvm installs are per-version. |
 | Build | `pnpm run build` (runs `node scripts/build-all.mjs`) |
+
+**Node floor is enforced, not advisory.** v2026.7.1 declares `engines: >=22.22.3 <23 || >=24.15.0 <25 || >=25.9.0`, and `src/infra/node-sqlite.ts` refuses to open *any* SQLite state DB when the embedded SQLite is affected by the upstream WAL-reset corruption bug (needs 3.51.3+, or patched 3.50.7+/3.44.6+). A too-old Node does not degrade — the gateway will not start. Node 24.19.0 embeds SQLite 3.53.3.
+
+Both previously-installed runtimes fail that check, so do not fall back to them: **v22.22.1** ships SQLite 3.51.2, and **v24.13.0** — which this unit ran until 2026-08-05 — ships 3.50.4. Earlier revisions of this file described the runtime as "22.x"; that was the build-shell PATH, while the service itself was on v24.13.0.
+
+When changing Node, update `ExecStart` **and** `Environment=PATH` in `~/.config/systemd/user/openclaw-gateway.service`, then `systemctl --user daemon-reload`. The change takes effect on the next restart, not on reload. Backup from the last bump: `openclaw-gateway.service.bak-pre-node24.19-20260805-063829`.
 
 Restarting the gateway interrupts any active Nix session and any Telegram bot loop. Don't restart casually — ask first unless the user explicitly told you to.
 
@@ -73,7 +80,7 @@ git log --oneline | grep -i onModelDiagnosticEvent
 git cherry-pick feat/model-call-completed-usage~1 feat/model-call-completed-usage
 
 # Rebuild + restart
-export PATH=~/.nvm/versions/node/v22.22.1/bin:$PATH
+export PATH=~/.nvm/versions/node/v24.19.0/bin:$PATH
 pnpm run build
 systemctl --user restart openclaw-gateway.service
 ```
@@ -94,7 +101,7 @@ grep 'case "model.call.completed"' ~/.openclaw/user-plugins/agentweave-bridge/di
 If absent, the plugin source was edited but never recompiled:
 ```bash
 cd ~/.openclaw/user-plugins/agentweave-bridge
-export PATH=~/.nvm/versions/node/v22.22.1/bin:$PATH
+export PATH=~/.nvm/versions/node/v24.19.0/bin:$PATH
 npm run build
 ```
 
