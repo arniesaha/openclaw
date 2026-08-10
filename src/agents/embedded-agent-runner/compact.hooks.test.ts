@@ -784,6 +784,92 @@ describe("compactEmbeddedAgentSessionDirect hooks", () => {
     },
   );
 
+  // Fork carry: upstream removed this test in #160766; kept as the regression proof
+  // that compaction threads the run session key into the agentweave attribution header.
+  it("routes compaction through shared stream resolution and extra params", async () => {
+    const resolvedStreamFn = vi.fn();
+    resolveEmbeddedAgentStreamMock.mockReturnValue({
+      streamFn: resolvedStreamFn,
+      strategy: "session-custom",
+    });
+    applyExtraParamsToAgentMock.mockReturnValue({
+      effectiveExtraParams: { transport: "websocket" },
+    });
+    const session = {
+      agent: {
+        streamFn: vi.fn(),
+      },
+      messages: [{ role: "user", content: "hello" }],
+    };
+
+    await compactTesting.prepareCompactionSessionAgent({
+      session: session as never,
+      llmRuntime: { streamSimple: vi.fn() } as never,
+      providerStreamFn: vi.fn(),
+      sessionId: "session-1",
+      signal: new AbortController().signal,
+      effectiveModel: { provider: "openai", id: "fake", api: "responses", input: [] } as never,
+      resolvedApiKey: undefined,
+      authStorage: { setRuntimeApiKey: vi.fn() },
+      config: undefined,
+      provider: "openai",
+      modelId: "gpt-5.4",
+      thinkLevel: "off",
+      sessionAgentId: "main",
+      effectiveWorkspace: join(TEST_WORKSPACE_DIR, "workspace"),
+      agentDir: join(TEST_WORKSPACE_DIR, "workspace"),
+      runtimePlan: {
+        auth: { forwardedAuthProfileId: "openai:profile-1" },
+        transport: { resolveExtraParams: vi.fn(() => undefined) },
+      } as never,
+      sessionKey: "sandbox:direct:peer-1",
+      attributionSessionKey: "agent:main:session-1",
+    });
+
+    const streamArg = mockCallArg(resolveEmbeddedAgentStreamMock) as Record<string, unknown>;
+    expect(streamArg.currentStreamFn).toBeTypeOf("function");
+    expect(streamArg.sessionId).toBe("session-1");
+    expect(streamArg.authProfileId).toBe("openai:profile-1");
+    // Attribution header must carry the run session key, not the
+    // sandbox/policy-scoped key used for nativeWebSearchPolicyContext below.
+    expect(streamArg.sessionKey).toBe("agent:main:session-1");
+    expect(applyExtraParamsToAgentMock).toHaveBeenCalledWith(
+      expectRecordFields(mockCallArg(applyExtraParamsToAgentMock), { streamFn: resolvedStreamFn }),
+      undefined,
+      "openai",
+      "gpt-5.4",
+      undefined,
+      "off",
+      "main",
+      join(TEST_WORKSPACE_DIR, "workspace"),
+      expectRecordFields(mockCallArg(applyExtraParamsToAgentMock, 0, 8), {
+        provider: "openai",
+        id: "fake",
+        api: "responses",
+      }),
+      join(TEST_WORKSPACE_DIR, "workspace"),
+      undefined,
+      expectRecordFields(mockCallArg(applyExtraParamsToAgentMock, 0, 11), {
+        nativeWebSearchPolicyContext: {
+          sessionKey: "sandbox:direct:peer-1",
+          webSearchEnabled: false,
+          runtimeToolAllowlist: [],
+          sandboxToolPolicy: undefined,
+          messageProvider: undefined,
+          agentAccountId: undefined,
+          groupId: undefined,
+          groupChannel: undefined,
+          groupSpace: undefined,
+          spawnedBy: undefined,
+          senderId: undefined,
+          senderName: undefined,
+          senderUsername: undefined,
+          senderE164: undefined,
+        },
+      }),
+    );
+  });
+
   it.each([
     { execMode: "deny", permissionMode: "read-only", expectedExecMode: "deny" },
     { execMode: "allowlist", permissionMode: "guarded", expectedExecMode: "ask" },
