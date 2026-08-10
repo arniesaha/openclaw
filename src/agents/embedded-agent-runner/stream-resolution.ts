@@ -24,11 +24,15 @@ type EmbeddedStreamOptions = Parameters<StreamFn>[2] & {
 // The agentweave proxy joins this run's child LLM spans to the forced upstream
 // context keyed by that header (proxy _forced_session_contexts). Stock builds and
 // any other deployment leave the wire byte-for-byte unchanged.
+function agentweaveSessionKeyHeaderEnabled(): boolean {
+  return process.env.OPENCLAW_AGENTWEAVE_SESSION_KEY_HEADER === "1";
+}
+
 export function withAgentweaveSessionKeyHeader(
   options: EmbeddedStreamOptions | undefined,
   sessionKey: string | undefined,
 ): EmbeddedStreamOptions | undefined {
-  if (!sessionKey || process.env.OPENCLAW_AGENTWEAVE_SESSION_KEY_HEADER !== "1") {
+  if (!sessionKey || !agentweaveSessionKeyHeaderEnabled()) {
     return options;
   }
   return {
@@ -221,14 +225,20 @@ export function resolveEmbeddedAgentStream(
   }
 
   const promptCacheKey = params.promptCacheKey?.trim();
+  // The header stamp rides this wrapper, so a run that has a sessionKey must
+  // still be wrapped even with no prompt cache key and no run signal -- otherwise
+  // proxied attribution silently falls back to the provider's static headers.
+  // Gated on the env flag so stock builds keep returning the stream fn untouched.
+  const needsSessionKeyStamp = Boolean(params.sessionKey) && agentweaveSessionKeyHeaderEnabled();
   return {
     streamFn:
-      !promptCacheKey && !params.signal
+      !promptCacheKey && !params.signal && !needsSessionKeyStamp
         ? currentStreamFn
         : wrapEmbeddedAgentStreamFn(currentStreamFn, {
             runSignal: params.signal,
             providerId: params.model.provider,
             promptCacheKey,
+            sessionKey: params.sessionKey,
           }),
     strategy: isDefault ? "stream-simple" : "session-custom",
   };
