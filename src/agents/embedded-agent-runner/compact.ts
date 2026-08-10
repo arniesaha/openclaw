@@ -241,6 +241,9 @@ function prepareCompactionSessionAgent(params: {
   agentDir: string;
   runtimePlan?: AgentRuntimePlan;
   sessionKey?: string;
+  // Run session key used for outbound attribution headers (x-agentweave-session-key).
+  // Differs from `sessionKey` above, which is sandbox/policy-scoped.
+  attributionSessionKey?: string;
   sandboxToolPolicy?: { allow?: string[]; deny?: string[] };
   messageProvider?: string;
   agentAccountId?: string | null;
@@ -262,7 +265,7 @@ function prepareCompactionSessionAgent(params: {
     resolvedApiKey: params.resolvedApiKey,
     authProfileId: params.runtimePlan?.auth.forwardedAuthProfileId,
     authStorage: params.authStorage as never,
-    sessionKey: params.sessionKey,
+    sessionKey: params.attributionSessionKey,
   });
   const providerTextTransforms = resolveProviderTextTransforms({
     provider: params.provider,
@@ -1390,6 +1393,7 @@ async function compactEmbeddedAgentSessionDirectOnce(
             agentDir,
             runtimePlan,
             sessionKey: sandboxSessionKey,
+            attributionSessionKey: params.sessionKey,
             sandboxToolPolicy: sandbox?.tools,
             messageProvider: resolvedMessageProvider,
             agentAccountId: params.agentAccountId,

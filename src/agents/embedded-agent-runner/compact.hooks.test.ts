@@ -381,12 +381,17 @@ describe("compactEmbeddedAgentSessionDirect hooks", () => {
         auth: { forwardedAuthProfileId: "openai:profile-1" },
         transport: { resolveExtraParams: vi.fn(() => undefined) },
       } as never,
+      sessionKey: "sandbox:direct:peer-1",
+      attributionSessionKey: "agent:main:session-1",
     });
 
     const streamArg = mockCallArg(resolveEmbeddedAgentStreamFnMock) as Record<string, unknown>;
     expect(streamArg.currentStreamFn).toBeTypeOf("function");
     expect(streamArg.sessionId).toBe("session-1");
     expect(streamArg.authProfileId).toBe("openai:profile-1");
+    // Attribution header must carry the run session key, not the
+    // sandbox/policy-scoped key used for nativeWebSearchPolicyContext below.
+    expect(streamArg.sessionKey).toBe("agent:main:session-1");
     expect(applyExtraParamsToAgentMock).toHaveBeenCalledWith(
       expectRecordFields(mockCallArg(applyExtraParamsToAgentMock), { streamFn: resolvedStreamFn }),
       undefined,
@@ -405,7 +410,7 @@ describe("compactEmbeddedAgentSessionDirect hooks", () => {
       undefined,
       expectRecordFields(mockCallArg(applyExtraParamsToAgentMock, 0, 11), {
         nativeWebSearchPolicyContext: {
-          sessionKey: undefined,
+          sessionKey: "sandbox:direct:peer-1",
           sandboxToolPolicy: undefined,
           messageProvider: undefined,
           agentAccountId: undefined,
