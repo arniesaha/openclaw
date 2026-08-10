@@ -617,6 +617,39 @@ describe("anthropic transport stream", () => {
     );
   });
 
+  it("merges the agentweave session-key header from options.headers onto the wire without dropping static model.headers", async () => {
+    const model = makeAnthropicTransportModel({
+      headers: { "X-Provider": "anthropic" },
+      requestTransport: {
+        proxy: {
+          mode: "explicit-proxy",
+          url: "http://proxy.internal:8443",
+        },
+      },
+    });
+
+    await runTransportStream(
+      model,
+      {
+        messages: [{ role: "user", content: "hello" }],
+      } as AnthropicStreamContext,
+      {
+        apiKey: "sk-ant-api",
+        headers: { "x-agentweave-session-key": "agent:main:main" },
+      } as AnthropicStreamOptions,
+    );
+
+    const [, init] = guardedFetchCall();
+    const headers = new Headers(init?.headers);
+    // The agentweave observability proxy attributes spans by this header, which
+    // is stamped dynamically per-run into options.headers. It must survive the
+    // transport's header merge and must not knock out statically configured
+    // model.headers entries — the caller-supplied options merge AFTER
+    // model.headers, so both need to land on the actual outgoing request.
+    expect(headers.get("x-agentweave-session-key")).toBe("agent:main:main");
+    expect(headers.get("X-Provider")).toBe("anthropic");
+  });
+
   it("sends server-side fallback params for direct Fable API-key requests", async () => {
     guardedFetchMock.mockResolvedValueOnce(
       createSseResponse([

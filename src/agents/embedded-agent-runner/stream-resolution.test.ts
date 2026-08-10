@@ -649,7 +649,7 @@ describe("resolveEmbeddedAgentStreamFn tail branch session key", () => {
     }
   });
 
-  function captureOptions(sessionKey: string | undefined) {
+  function resolveWithCapturedOptions(sessionKey: string | undefined) {
     const seen: Record<string, unknown>[] = [];
     const inner: StreamFn = ((_m: never, _c: never, options: Record<string, unknown>) => {
       seen.push(options ?? {});
@@ -662,12 +662,12 @@ describe("resolveEmbeddedAgentStreamFn tail branch session key", () => {
       model: { provider: "custom-proxy", api: "custom-api", id: "m1" } as never,
     });
     streamFn({ provider: "custom-proxy", id: "m1" } as never, {} as never, {});
-    return seen[0] ?? {};
+    return { inner, streamFn, options: seen[0] ?? {} };
   }
 
   it("stamps the session key when there is no prompt cache key", () => {
     process.env[ENV] = "1";
-    const options = captureOptions("agent:main:main");
+    const { options } = resolveWithCapturedOptions("agent:main:main");
     expect(requireRecord(options.headers, "headers")["x-agentweave-session-key"]).toBe(
       "agent:main:main",
     );
@@ -675,7 +675,12 @@ describe("resolveEmbeddedAgentStreamFn tail branch session key", () => {
 
   it("leaves the stream fn unwrapped when the env gate is off", () => {
     delete process.env[ENV];
-    const options = captureOptions("agent:main:main");
+    // Contract is identity, not just "no headers": the resolver must return the
+    // exact inner stream fn when the gate is off, proving stock builds get
+    // zero wrapping overhead rather than a pass-through wrapper that happens
+    // to produce the same options shape.
+    const { inner, streamFn, options } = resolveWithCapturedOptions("agent:main:main");
+    expect(streamFn).toBe(inner);
     expect(options.headers).toBeUndefined();
   });
 });

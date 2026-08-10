@@ -262,6 +262,7 @@ function prepareCompactionSessionAgent(params: {
     resolvedApiKey: params.resolvedApiKey,
     authProfileId: params.runtimePlan?.auth.forwardedAuthProfileId,
     authStorage: params.authStorage as never,
+    sessionKey: params.sessionKey,
   });
   const providerTextTransforms = resolveProviderTextTransforms({
     provider: params.provider,
