@@ -636,3 +636,46 @@ describe("withAgentweaveSessionKeyHeader", () => {
     expect(headers["x-agentweave-session-key"]).toBe("agent:main:conductor");
   });
 });
+
+describe("resolveEmbeddedAgentStreamFn tail branch session key", () => {
+  const ENV = "OPENCLAW_AGENTWEAVE_SESSION_KEY_HEADER";
+  const prev = process.env[ENV];
+
+  afterEach(() => {
+    if (prev === undefined) {
+      delete process.env[ENV];
+    } else {
+      process.env[ENV] = prev;
+    }
+  });
+
+  function captureOptions(sessionKey: string | undefined) {
+    const seen: Record<string, unknown>[] = [];
+    const inner: StreamFn = ((_m: never, _c: never, options: Record<string, unknown>) => {
+      seen.push(options ?? {});
+      return undefined as never;
+    }) as never;
+    const streamFn = resolveEmbeddedAgentStreamFn({
+      currentStreamFn: inner,
+      sessionId: "s1",
+      sessionKey,
+      model: { provider: "custom-proxy", api: "custom-api", id: "m1" } as never,
+    });
+    streamFn({ provider: "custom-proxy", id: "m1" } as never, {} as never, {});
+    return seen[0] ?? {};
+  }
+
+  it("stamps the session key when there is no prompt cache key", () => {
+    process.env[ENV] = "1";
+    const options = captureOptions("agent:main:main");
+    expect(requireRecord(options.headers, "headers")["x-agentweave-session-key"]).toBe(
+      "agent:main:main",
+    );
+  });
+
+  it("leaves the stream fn unwrapped when the env gate is off", () => {
+    delete process.env[ENV];
+    const options = captureOptions("agent:main:main");
+    expect(options.headers).toBeUndefined();
+  });
+});
