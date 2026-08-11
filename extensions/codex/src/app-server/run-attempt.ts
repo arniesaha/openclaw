@@ -44,6 +44,7 @@ import { resolveAgentDir } from "openclaw/plugin-sdk/agent-runtime";
 import {
   createDiagnosticTraceContextFromActiveScope,
   emitTrustedDiagnosticEvent,
+  formatDiagnosticTraceparent,
   freezeDiagnosticTraceContext,
   onInternalDiagnosticEvent,
   resolveDiagnosticModelContentCapturePolicy,
@@ -456,6 +457,10 @@ export async function runCodexAppServerAttempt(
   const codexModelCallTrace = freezeDiagnosticTraceContext(
     createDiagnosticTraceContextFromActiveScope(),
   );
+  // Formatted once per attempt: turn/start carries it so codex's span tree lands
+  // in this turn's trace instead of rooting itself. Undefined when the scope has
+  // no span id, which omits the carrier and keeps prior behavior.
+  const codexModelCallTraceparent = formatDiagnosticTraceparent(codexModelCallTrace);
   const codexModelContentCapture = resolveDiagnosticModelContentCapturePolicy(params.config);
   const codexModelCallId = `${params.runId}:codex-model:1`;
   const fastModeAutoStartedAtMs =
@@ -2780,6 +2785,7 @@ export async function runCodexAppServerAttempt(
         await client.request("turn/start", turnStartParams, {
           timeoutMs: params.timeoutMs,
           signal: runAbortController.signal,
+          traceparent: codexModelCallTraceparent,
         }),
       );
       acceptedTurnId = startedTurn.turn.id;

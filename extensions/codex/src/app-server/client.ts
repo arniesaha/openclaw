@@ -231,17 +231,17 @@ export class CodexAppServerClient {
   request<M extends CodexAppServerRequestMethod>(
     method: M,
     params: CodexAppServerRequestParams<M>,
-    options?: { timeoutMs?: number; signal?: AbortSignal },
+    options?: { timeoutMs?: number; signal?: AbortSignal; traceparent?: string },
   ): Promise<CodexAppServerRequestResult<M>>;
   request<T = JsonValue | undefined>(
     method: string,
     params?: unknown,
-    options?: { timeoutMs?: number; signal?: AbortSignal },
+    options?: { timeoutMs?: number; signal?: AbortSignal; traceparent?: string },
   ): Promise<T>;
   request<T = JsonValue | undefined>(
     method: string,
     params?: unknown,
-    optionsInput?: { timeoutMs?: number; signal?: AbortSignal },
+    optionsInput?: { timeoutMs?: number; signal?: AbortSignal; traceparent?: string },
   ): Promise<T> {
     let options = optionsInput;
     options ??= {};
@@ -252,7 +252,15 @@ export class CodexAppServerClient {
       return Promise.reject(new Error(`${method} aborted`));
     }
     const id = this.nextId++;
-    const message: RpcRequest = { id, method, params: params as JsonValue | undefined };
+    // Codex parents the request span on this carrier and exports its whole span
+    // tree into our trace id; omitting the key reproduces pre-tracing behavior
+    // exactly, since the field is optional on the codex side.
+    const message: RpcRequest = {
+      id,
+      method,
+      params: params as JsonValue | undefined,
+      ...(options.traceparent ? { trace: { traceparent: options.traceparent } } : {}),
+    };
     return new Promise<T>((resolve, reject) => {
       let timeout: ReturnType<typeof setTimeout> | undefined;
       let cleanupAbort: (() => void) | undefined;

@@ -630,4 +630,32 @@ describe("CodexAppServerClient", () => {
       result: { answers: {} },
     });
   });
+
+  it("stamps the W3C trace carrier on the request envelope when a traceparent is given", async () => {
+    const harness = createClientHarness();
+    clients.push(harness.client);
+    const traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+
+    const request = harness.client.request("turn/start", { prompt: "hi" }, { traceparent });
+    const outbound = JSON.parse(harness.writes[0] ?? "{}") as {
+      id?: number;
+      trace?: { traceparent?: string };
+    };
+    harness.send({ id: outbound.id, result: {} });
+    await request;
+
+    expect(outbound.trace).toEqual({ traceparent });
+  });
+
+  it("omits the trace carrier entirely when no traceparent is given", async () => {
+    const harness = createClientHarness();
+    clients.push(harness.client);
+
+    const request = harness.client.request("turn/start", { prompt: "hi" });
+    const outbound = JSON.parse(harness.writes[0] ?? "{}") as { id?: number };
+    harness.send({ id: outbound.id, result: {} });
+    await request;
+
+    expect(Object.hasOwn(outbound, "trace")).toBe(false);
+  });
 });
