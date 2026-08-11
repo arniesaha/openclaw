@@ -60,6 +60,7 @@ type RequestOptions = {
   timeoutMs?: number;
   signal?: AbortSignal;
   assertCurrent?: () => void;
+  traceparent?: string;
 };
 
 /** Process-local generation fence for bindings tied to one app-server client instance. */
@@ -616,7 +617,15 @@ export class CodexAppServerClient {
     ) {
       this.modelCatalogRevision += 1;
     }
-    const message: RpcRequest = { id, method, params: params as JsonValue | undefined };
+    // Codex parents the request span on this carrier and exports its whole span
+    // tree into our trace id; omitting the key reproduces pre-tracing behavior
+    // exactly, since the field is optional on the codex side.
+    const message: RpcRequest = {
+      id,
+      method,
+      params: params as JsonValue | undefined,
+      ...(options.traceparent ? { trace: { traceparent: options.traceparent } } : {}),
+    };
     return new Promise<T>((resolve, reject) => {
       let timeout: ReturnType<typeof setTimeout> | undefined;
       let cleanupAbort: (() => void) | undefined;
