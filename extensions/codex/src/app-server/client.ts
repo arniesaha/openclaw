@@ -64,6 +64,7 @@ const CODEX_APP_SERVER_PENDING_STARTUP_WARNINGS_MAX = 32;
 const CODEX_APP_SERVER_CLIENT_INSTANCE_IDS = new WeakMap<object, string>();
 
 type RequestOptions = {
+  traceparent?: string;
   timeoutMs?: number;
   signal?: AbortSignal;
   assertCurrent?: () => void;
@@ -664,7 +665,11 @@ export class CodexAppServerClient {
     ) {
       this.modelCatalogRevision += 1;
     }
-    const message: RpcRequest = { id, method, params: params as JsonValue | undefined };
+    // Carry the parent context through retries without replacing request ownership.
+    const message: RpcRequest = {
+      id, method, params: params as JsonValue | undefined,
+      ...(options.traceparent ? { trace: { traceparent: options.traceparent } } : {}),
+    };
     const attempt = createCodexRequestAttempt({
       method,
       retainWritten: onResponse !== undefined,
