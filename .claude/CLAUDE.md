@@ -92,18 +92,28 @@ grep -c onModelDiagnosticEvent dist/plugin-sdk/diagnostic-runtime.js   # expect 
 
 ## Companion plugin: `agentweave-bridge`
 
-Lives outside this repo at `~/.openclaw/user-plugins/agentweave-bridge/`. It has its own build (`npm run build` — pure tsc, no pnpm). The plugin's `dist/src/service.js` must contain a `case "model.call.completed"` handler:
+**Source of truth is the agentweave repo, not the deployed directory.** The bridge is developed at `/home/Arnab/dev/agentweave/plugins/openclaw-agentweave-bridge/` and deployed as a **prebuilt esbuild bundle** copied to `~/.openclaw/user-plugins/agentweave-bridge/index.js`. That deployed `package.json` declares `"openclaw": { "extensions": ["./index.js"] }` — the top-level `index.js` (~2.5 MB) is the only artifact OpenClaw loads.
+
+Do **not** edit or build in the deployed directory. Its `src/`, `index.ts`, and `dist/` are stale leftovers: `dist/index.js` is a 342-byte stub and `dist/src/` has not been regenerated since 2026-05-07. An earlier revision of this file told you to run `npm run build` there and grep `dist/src/service.js` — both are wrong and will silently check a file the gateway never loads.
+
+Verify the *live* artifact instead:
 
 ```bash
-grep 'case "model.call.completed"' ~/.openclaw/user-plugins/agentweave-bridge/dist/src/service.js
+grep -c 'case "model.call.completed"' ~/.openclaw/user-plugins/agentweave-bridge/index.js
 ```
 
-If absent, the plugin source was edited but never recompiled:
+To rebuild and deploy after editing the source:
 ```bash
-cd ~/.openclaw/user-plugins/agentweave-bridge
 export PATH=~/.nvm/versions/node/v24.19.0/bin:$PATH
-npm run build
+cd /home/Arnab/dev/agentweave/plugins/openclaw-agentweave-bridge
+npm run build:bundle            # esbuild → bundle/index.js
+npm run verify:bundle
+cp ~/.openclaw/user-plugins/agentweave-bridge/index.js \
+   ~/.openclaw/user-plugins/agentweave-bridge/index.js.bak-$(date +%Y%m%d-%H%M%S)
+cp bundle/index.js ~/.openclaw/user-plugins/agentweave-bridge/index.js
 ```
+
+The bundle is only picked up on gateway restart — which interrupts live sessions, so ask first.
 
 ### `muxUrl` field (removed 2026-05-31)
 
