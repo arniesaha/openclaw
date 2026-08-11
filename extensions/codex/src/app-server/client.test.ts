@@ -637,7 +637,8 @@ describe("CodexAppServerClient", () => {
     const traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
 
     const request = harness.client.request("turn/start", { prompt: "hi" }, { traceparent });
-    const outbound = JSON.parse(harness.writes[0] ?? "{}") as {
+    expect(harness.writes).toHaveLength(1);
+    const outbound = JSON.parse(harness.writes[0]!) as {
       id?: number;
       trace?: { traceparent?: string };
     };
@@ -652,7 +653,8 @@ describe("CodexAppServerClient", () => {
     clients.push(harness.client);
 
     const request = harness.client.request("turn/start", { prompt: "hi" });
-    const outbound = JSON.parse(harness.writes[0] ?? "{}") as { id?: number };
+    expect(harness.writes).toHaveLength(1);
+    const outbound = JSON.parse(harness.writes[0]!) as { id?: number };
     harness.send({ id: outbound.id, result: {} });
     await request;
 

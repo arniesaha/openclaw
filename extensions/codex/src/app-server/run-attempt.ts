@@ -458,8 +458,10 @@ export async function runCodexAppServerAttempt(
     createDiagnosticTraceContextFromActiveScope(),
   );
   // Formatted once per attempt: turn/start carries it so codex's span tree lands
-  // in this turn's trace instead of rooting itself. Undefined when the scope has
-  // no span id, which omits the carrier and keeps prior behavior.
+  // in this turn's trace instead of rooting itself. With no active scope a fresh
+  // root context is minted, so this is always set; codex parents on the same span
+  // id the model-call diagnostic event carries, which only reaches a backend if a
+  // diagnostic subscriber exports it.
   const codexModelCallTraceparent = formatDiagnosticTraceparent(codexModelCallTrace);
   const codexModelContentCapture = resolveDiagnosticModelContentCapturePolicy(params.config);
   const codexModelCallId = `${params.runId}:codex-model:1`;

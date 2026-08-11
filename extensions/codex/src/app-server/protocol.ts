@@ -30,17 +30,16 @@ export type CodexAppServerRequestResult<M extends CodexAppServerRequestMethod> =
     ? CodexAppServerRequestResultMap[M]
     : JsonValue | undefined;
 
-/** W3C trace carrier on an outbound request; codex parents its span tree on it. */
-export type RpcTraceCarrier = {
-  traceparent: string;
-  tracestate?: string;
-};
-
 export type RpcRequest = {
   id?: number | string;
   method: string;
   params?: JsonValue;
-  trace?: RpcTraceCarrier;
+  /**
+   * W3C trace carrier codex parents its span tree on. Matches codex's
+   * `JSONRPCRequest.trace` (`codex-rs/app-server-protocol/src/rpc.rs`), whose
+   * `tracestate` is omitted here because nothing on this side populates one.
+   */
+  trace?: { traceparent: string };
 };
 
 export type RpcResponse = {
