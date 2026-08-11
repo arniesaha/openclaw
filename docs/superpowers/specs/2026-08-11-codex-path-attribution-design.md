@@ -182,7 +182,49 @@ and drops `user.account_id` / `user.email` which the log variant keeps.
 
 Traces are scrubbed by design; logs are the sensitive channel. Payload capture
 therefore requires enabling the logs exporter *and* flipping `log_user_prompt`.
-That is a privacy decision, deliberately out of scope here.
+
+Requested for inclusion on 2026-08-11. Scoped as a gated Phase 2 below rather
+than a rung on the proof ladder, because it cannot ship on current
+infrastructure and it contradicts an existing deliberate decision in this
+deployment.
+
+### Phase 2 (gated): prompt and response payload capture
+
+**Blocked on infrastructure that does not exist.** The OTel collector at
+`10.43.221.47:4318` (`monitoring/agentweave-otel-collector`, the endpoint the
+bridge already uses) declares `service.pipelines` with `traces` only —
+receivers `[otlp]`, exporters `[otlphttp/tempo, debug]`. There is no logs
+pipeline, and no logs backend in the cluster (no Loki). Tempo itself is
+traces-only. Codex would emit payload logs to an endpoint that discards them.
+
+**Conflicts with an existing decision in this deployment.** The same collector
+runs an `attributes/strip_pii` processor, commented *"before anything reaches
+Tempo"*, deleting `user.email`, `user.id`, `user.account_uuid`,
+`user.account_id`, and `organization.id`. Codex's `log_event!`
+(`codex-rs/otel/src/events/shared.rs:4-22`) attaches `user.account_id` and
+`user.email` to every log event, and `log_user_prompt = true` adds the full
+verbatim prompt text. Enabling this ships precisely the categories that
+processor was built to remove, through a pipeline that currently has no
+equivalent scrubbing.
+
+Prerequisites, all required before any of this is switched on:
+
+1. A logs backend (Loki or equivalent) and a `logs` pipeline on the collector.
+2. A PII posture decision for that pipeline. Either extend `attributes/strip_pii`
+   to the logs pipeline — which keeps `user.*` out but still stores full prompt
+   text — or accept identified prompt storage deliberately.
+3. Retention and access policy for stored prompts. Prompt text is the most
+   sensitive artifact this system handles; trace retention defaults are unlikely
+   to be the right answer for it.
+4. A separate `exporter` endpoint in the codex `[otel]` block. `exporter` (logs)
+   and `trace_exporter` are independent, so logs can be routed away from Tempo
+   without disturbing Phase 1.
+
+Recommendation: land Phase 1 first and evaluate whether it is already
+sufficient. Phase 1 yields per-call token counts, cache split, reasoning tokens,
+TTFT, model, and tool names. Payload capture adds verbatim content and a
+materially larger privacy surface. If the goal is cost and performance
+attribution, Phase 1 meets it without storing prompts at all.
 
 ## Failure modes
 
