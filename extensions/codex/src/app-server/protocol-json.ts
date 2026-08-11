@@ -5,6 +5,8 @@ export type RpcRequest = {
   id?: number | string;
   method: string;
   params?: JsonValue;
+  /** W3C context matches the optional Codex JSONRPCRequest.trace carrier. */
+  trace?: { traceparent: string };
 };
 
 export type RpcResponse = {
