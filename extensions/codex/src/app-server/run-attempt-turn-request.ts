@@ -1,4 +1,5 @@
 import { embeddedAgentLog, formatErrorMessage } from "openclaw/plugin-sdk/agent-harness-runtime";
+import { formatDiagnosticTraceparent } from "openclaw/plugin-sdk/diagnostic-runtime";
 import {
   interruptCodexTurnAndWaitBestEffort,
   retireUnsafeCodexTurnClientBestEffort,
@@ -54,6 +55,12 @@ export async function prepareCodexAttemptTurnRequest(
     ...prompt.codexModelInputHistoryMessages,
     buildCodexUserPromptMessage({ ...runtimeParams, prompt: turnState.codexTurnPromptText }),
   ];
+  // Formatted once per attempt: turn/start carries it so codex's span tree lands
+  // in this turn's trace instead of rooting itself. With no active scope a fresh
+  // root context is minted, so this is always set; codex parents on the same span
+  // id the model-call diagnostic event carries, which only reaches a backend if a
+  // diagnostic subscriber exports it.
+  const codexModelCallTraceparent = formatDiagnosticTraceparent(codexModelCallTrace);
   const codexModelCallDiagnostics = createCodexModelCallDiagnosticEmitter({
     baseFields: {
       runId: params.runId,
@@ -156,6 +163,7 @@ export async function prepareCodexAttemptTurnRequest(
           timeoutMs: params.timeoutMs,
           signal: runAbortController.signal,
           assertCurrent: connection.assertCurrent,
+          traceparent: codexModelCallTraceparent,
         }),
       );
       acceptedTurnId = startedTurn.turn.id;
