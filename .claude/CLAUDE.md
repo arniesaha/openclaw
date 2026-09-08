@@ -12,10 +12,12 @@ These are notes specific to *this* checkout — Arnab's openclaw fork running as
 | Restart cmd | `systemctl --user restart openclaw-gateway.service` |
 | Logs | `journalctl --user -u openclaw-gateway.service -n 100 --no-pager` |
 | Node | **24.19.0** via `~/.nvm/versions/node/v24.19.0/bin/` — `export PATH=~/.nvm/versions/node/v24.19.0/bin:$PATH` before `pnpm`. The systemd unit pins the same interpreter in both `ExecStart` and its `Environment=PATH`. |
-| pnpm | 11.2.2, resolved through `corepack` under Node 24.19.0 (matches the repo's `packageManager` pin). If `pnpm: command not found` after a Node upgrade, run `corepack enable` for the new version — nvm installs are per-version. |
+| pnpm | 12.1.0, resolved through `corepack` under Node 24.19.0 (matches the repo's `packageManager` pin). If `pnpm: command not found` after a Node upgrade, run `corepack enable` for the new version — nvm installs are per-version. |
 | Build | `pnpm run build` (runs `node scripts/build-all.mjs`) |
 
-**Node floor is enforced, not advisory.** v2026.7.1 declares `engines: >=22.22.3 <23 || >=24.15.0 <25 || >=25.9.0`, and `src/infra/node-sqlite.ts` refuses to open *any* SQLite state DB when the embedded SQLite is affected by the upstream WAL-reset corruption bug (needs 3.51.3+, or patched 3.50.7+/3.44.6+). A too-old Node does not degrade — the gateway will not start. Node 24.19.0 embeds SQLite 3.53.3.
+**`pnpm build` writes more than root `dist/`.** It also produces `packages/*/dist` and `extensions/*/dist` (16 dirs as of v2026.9.2: `extensions/workboard` plus `packages/{acp-core,agent-core,ai,gateway-client,gateway-protocol,llm-core,markdown-core,media-core,media-generation-core,media-understanding-common,model-catalog-core,net-policy,normalization-core,retry,terminal-core}`). All are gitignored, so a branch switch leaves the old ones in place. If you stage a build from another checkout, copy **all** of them — copying only root `dist/` leaves stale workspace artifacts and the gateway dies at startup with a missing-export `SyntaxError` (e.g. `'@openclaw/ai/diagnostics' does not provide an export named 'hasRetryableConnectionErrorCode'`).
+
+**Node floor is enforced, not advisory.** v2026.9.2 declares `engines: >=22.22.3 <23 || >=24.15.0 <25 || >=25.9.0`, and `src/infra/node-sqlite.ts` refuses to open *any* SQLite state DB when the embedded SQLite is affected by the upstream WAL-reset corruption bug (needs 3.51.3+, or patched 3.50.7+/3.44.6+). A too-old Node does not degrade — the gateway will not start. Node 24.19.0 embeds SQLite 3.53.3.
 
 Both previously-installed runtimes fail that check, so do not fall back to them: **v22.22.1** ships SQLite 3.51.2, and **v24.13.0** — which this unit ran until 2026-08-05 — ships 3.50.4. Earlier revisions of this file described the runtime as "22.x"; that was the build-shell PATH, while the service itself was on v24.13.0.
 
@@ -23,10 +25,13 @@ When changing Node, update `ExecStart` **and** `Environment=PATH` in `~/.config/
 
 Restarting the gateway interrupts any active Nix session and any Telegram bot loop. Don't restart casually — ask first unless the user explicitly told you to.
 
-### Current state (2026-06-21): upgraded to v2026.6.9
+### Current state (2026-09-08): upgraded to v2026.9.2
 
-- Deploy now tracks branch **`upgrade/v2026.6.9`** (fork carries rebased onto upstream `v2026.6.9`; the old `feat/agentweave-238-clientContext` is the pre-upgrade base). App version `2026.6.9`.
-- **v2026.6.9 renamed the codex provider:** `models.providers.openai-codex` → `models.providers.openai`, `api` value `openai-codex-responses` → `openai-chatgpt-responses`, agent model refs `openai-codex/* → openai/*`. The old config fails v2026.6.9's stricter validation (gateway crash-loops on "Invalid config"); `openclaw doctor --fix` migrates it (needed **two passes**). Pre-upgrade config backup: `~/.openclaw/openclaw.json.pre-v6.9-20260621-122305`.
+- Deploy tracks branch **`upgrade/v2026.9.2`** (fork carries rebased onto upstream `v2026.9.2` through a four-hop ladder `v2026.8.1 → v2026.8.2 → v2026.9.1 → v2026.9.2` from the previous `upgrade/v2026.7.1`). App version `2026.9.2`; 36 commits ahead of the upstream tag.
+- **Model auth profiles moved.** Shared profiles now live in `~/.openclaw/state/openclaw.sqlite`, with agent-local profiles overriding the shared read-through base — not `~/.openclaw/agents/<agentId>/agent/auth-profiles.json`. Channel/provider credentials stay in `~/.openclaw/credentials/`.
+- **v2026.9.2 config migration.** Six findings needed `openclaw doctor --fix`: `meta.lastTouchedAt`, `agents.defaults.memorySearch`, `commands.ownerDisplay`, `cron.maxConcurrentRuns`, `gateway.tailscale.resetOnExit` (all removed keys) and `diagnostics.otel.captureContent`. Pre-upgrade config backup: `~/.openclaw/openclaw.json.pre-v9.2-20260908-120748`.
+- **`diagnostics.otel.captureContent` narrowed upstream, in v2026.8.1**, from `boolean | {enabled, inputMessages, …}` to a plain boolean. This is an upstream change, not a dropped fork carry — `inputMessages` exists in v2026.7.1's `zod-schema.ts` and in none of the later tags. `resolveContentCapturePolicy` (`extensions/diagnostics-otel/src/service-content-normalization.ts:45`) maps `true` to `inputMessages/outputMessages/toolInputs/toolOutputs/toolDefinitions/logBodies: true` and `systemPrompt: false`, so the old `{enabled: true, inputMessages: true}` is preserved **and widened** — output and tool payloads are now captured too.
+- Previous state, for reference — **v2026.6.9 renamed the codex provider:** `models.providers.openai-codex` → `models.providers.openai`, `api` value `openai-codex-responses` → `openai-chatgpt-responses`, agent model refs `openai-codex/* → openai/*`. The old config fails v2026.6.9's stricter validation (gateway crash-loops on "Invalid config"); `openclaw doctor --fix` migrates it (needed **two passes**). Pre-upgrade config backup: `~/.openclaw/openclaw.json.pre-v6.9-20260621-122305`.
 - A third bridge subscription line now appears on healthy startup — `subscribed to trusted lifecycle clientContext via plugin-sdk` — from the `onTrustedDiagnosticEvent` / `clientContext`-on-privateData carry (the agentweave#238 pivot). Upstream v2026.6.9 ships the trusted `privateData` channel natively (`modelContent`/`toolContent`) but without `clientContext`; the fork extends it.
 
 ## Long-lived local divergence from upstream
@@ -45,7 +50,7 @@ This fork carries patches that are not yet on `upstream/main`. **If you rebase a
 ### Patch: iOS assistant-bubble dedupe (OpenClawKit)
 
 - **Upstream status**: never proposed. Fork-local client-side fix.
-- **Local presence**: commit `7e363239b0e` ("fix(ios): collapse duplicate adjacent assistant text bubbles in chat transcript") on `upgrade/v2026.6.9`. Touches `apps/shared/OpenClawKit/Sources/OpenClawChatUI/ChatViewModel.swift` (+87/-1) and `apps/shared/OpenClawKit/Tests/OpenClawKitTests/ChatViewModelTests.swift` (+59).
+- **Local presence**: commit `5746129eea1` ("fix(ios): collapse duplicate adjacent assistant text bubbles in chat transcript") on `upgrade/v2026.9.2` (originally `7e363239b0e` on `upgrade/v2026.6.9`; replayed through the four-hop ladder). Touches `apps/shared/OpenClawKit/Sources/OpenClawChatUI/ChatViewModel.swift` (+87/-1) and `apps/shared/OpenClawKit/Tests/OpenClawKitTests/ChatViewModelTests.swift` (+59).
 - **Why it matters**: found while using the **official OpenClaw iOS app** against this fork's gateway. An assistant reply arrives on two delivery paths — a `sessionMessage` carrying the traced transcript (text plus the `tool_call` blocks that produced it), and a `chat` event with `state: "final"` carrying only the plain text. Both events are legitimate, so neither can be suppressed gateway-side; the app rendered **two visually identical assistant bubbles**.
 - **Mechanism**: `dedupeAdjacentAssistantTextMessages` runs as a final pass in `ChatViewModel`. Adjacent assistant messages collapse when their whitespace-folded text-block content matches and timestamps are within **5 minutes** (the window stops a genuinely repeated reply later in the conversation from being swallowed; both-timestamps-absent is treated as the same message, since duplicate delivery is the only way that shape occurs). On collapse it keeps the variant **without** a tool trace — the clean `final` text — because the traced variant's tool blocks already have their own transcript rows.
 - **⚠️ UNVERIFIED**: committed without ever being compiled or run. The NAS has no Swift toolchain (`swift`/`swiftc`/`xcodebuild` all absent), so `ChatViewModelTests` has never executed. **Run the OpenClawKit suite on macOS before trusting this.** Per root `AGENTS.md`, check real iOS devices before simulator.
@@ -102,6 +107,20 @@ Verify the *live* artifact instead:
 grep -c 'case "model.call.completed"' ~/.openclaw/user-plugins/agentweave-bridge/index.js
 ```
 
+### Bundle must supply its own `require` (v2026.9.2)
+
+The bundle is ESM but 75 call sites still reach `__require("util")`, `__require("fs")`, … — esbuild's shim, which uses an ambient `require` when one exists and otherwise throws. Up to v2026.7.1 the plugin loader happened to provide one. **v2026.9.2 does not**, so the plugin dies at load with:
+
+```
+[plugins] agentweave-bridge failed to load from …/index.js: Error: Dynamic require of "util" is not supported
+```
+
+The gateway still starts and reports `ready` — only the bridge is missing, so watch for the `1 plugin(s) failed to initialize` line rather than assuming a clean boot. Fix is a `createRequire` banner, now baked into `build:bundle` in the bridge's `package.json`:
+
+```
+--banner:js='import{createRequire as __openclawCreateRequire}from"node:module";const require=__openclawCreateRequire(import.meta.url);'
+```
+
 To rebuild and deploy after editing the source:
 ```bash
 export PATH=~/.nvm/versions/node/v24.19.0/bin:$PATH
@@ -140,4 +159,4 @@ Both the `/session` POST and LLM `baseUrl` point at the AgentWeave proxy directl
 
 ## Pnpm packageManager
 
-`package.json` pins `pnpm@11.1.0`. Use that or you'll get warnings.
+`package.json` pins `pnpm@12.1.0` (as of v2026.9.2). Use that or you'll get warnings.
