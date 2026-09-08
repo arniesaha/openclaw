@@ -2,6 +2,7 @@ import { SpanStatusCode } from "@opentelemetry/api";
 import { normalizeDiagnosticValue } from "openclaw/plugin-sdk/diagnostic-runtime";
 import { redactSensitiveText } from "../api.js";
 import type { DiagnosticEventMetadata, DiagnosticEventPayload } from "../api.js";
+import { assignClientContextAttributes, clientContextKeys } from "./client-context-attributes.js";
 import {
   addUpstreamRequestIdSpanEvent,
   assignGenAiModelCallAttrs,
@@ -32,6 +33,7 @@ export function createModelRecorders(runtime: DiagnosticsRecorderRuntime) {
     getTrackedInternalOrTrustedSpan,
     takeTrackedTrustedSpan,
     setSpanAttrs,
+    clientContextCache,
     contentCapturePolicy,
     tracesEnabled,
   } = runtime;
@@ -102,6 +104,11 @@ export function createModelRecorders(runtime: DiagnosticsRecorderRuntime) {
       spanAttrs["openclaw.transport"] = evt.transport;
     }
     assignModelCallPromptStatsAttrs(spanAttrs, evt);
+    // Stamp the seeded clientContext (captured from session.state/message.queued)
+    // onto the span at creation. This is best-effort: if model.call.started races
+    // ahead of the seed event it misses here, but the completed/error recorders
+    // re-resolve from the same cache, so attribution still lands on the finished span.
+    assignClientContextAttributes(spanAttrs, clientContextCache.resolve(clientContextKeys(evt)));
     return trackTrustedSpan(
       evt,
       metadata,
@@ -140,6 +147,7 @@ export function createModelRecorders(runtime: DiagnosticsRecorderRuntime) {
     assignModelCallPromptStatsAttrs(spanAttrs, evt);
     assignModelCallUsageAttrs(spanAttrs, evt);
     assignOtelModelContentAttributes(spanAttrs, modelContent, contentCapturePolicy);
+    assignClientContextAttributes(spanAttrs, clientContextCache.resolve(clientContextKeys(evt)));
     const span =
       takeTrackedTrustedSpan(evt, metadata) ??
       spanWithDuration(modelCallSpanName(evt), spanAttrs, evt.durationMs, {
@@ -191,6 +199,7 @@ export function createModelRecorders(runtime: DiagnosticsRecorderRuntime) {
     assignModelCallPromptStatsAttrs(spanAttrs, evt);
     assignModelCallUsageAttrs(spanAttrs, evt);
     assignOtelModelContentAttributes(spanAttrs, modelContent, contentCapturePolicy);
+    assignClientContextAttributes(spanAttrs, clientContextCache.resolve(clientContextKeys(evt)));
     const span =
       takeTrackedTrustedSpan(evt, metadata) ??
       spanWithDuration(modelCallSpanName(evt), spanAttrs, evt.durationMs, {
