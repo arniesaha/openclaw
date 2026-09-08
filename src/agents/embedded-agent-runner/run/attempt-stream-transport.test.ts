@@ -477,4 +477,31 @@ describe("prepareEmbeddedAttemptTransport", () => {
       },
     ]);
   });
+
+  it("stamps the agentweave session key header at the attempt call site", async () => {
+    // Fork carry regression: the resolver's own unit tests cover the stamp in
+    // isolation, so an upstream refactor that drops sessionKey from THIS call
+    // site leaves them green while the header silently disappears in prod.
+    const previous = process.env.OPENCLAW_AGENTWEAVE_SESSION_KEY_HEADER;
+    process.env.OPENCLAW_AGENTWEAVE_SESSION_KEY_HEADER = "1";
+    try {
+      const { input, session, model, getProviderOptions } =
+        createMediaTransportFixture("test-model-session-key");
+      (input.attempt as { sessionKey?: string }).sessionKey = "agent:main:session-key";
+
+      await prepareEmbeddedAttemptTransport(input);
+      const context = { systemPrompt: "system", messages: [], tools: [] };
+      session.agent.streamFn(model as never, context as never, {});
+
+      expect(getProviderOptions()?.headers?.["x-agentweave-session-key"]).toBe(
+        "agent:main:session-key",
+      );
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OPENCLAW_AGENTWEAVE_SESSION_KEY_HEADER;
+      } else {
+        process.env.OPENCLAW_AGENTWEAVE_SESSION_KEY_HEADER = previous;
+      }
+    }
+  });
 });
