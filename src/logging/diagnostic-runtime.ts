@@ -2,6 +2,7 @@
 import {
   areDiagnosticsEnabledForProcess,
   emitInternalDiagnosticEvent as emitDiagnosticEvent,
+  emitInternalDiagnosticEventWithPrivateData,
 } from "../infra/diagnostic-events.js";
 import { getDiagnosticSessionState, type SessionRef } from "./diagnostic-session-state.js";
 import { createSubsystemLogger } from "./subsystem.js";
@@ -31,6 +32,7 @@ export function resetDiagnosticActivityForTest(): void {
 type DiagnosticMessageQueueParams = SessionRef & {
   channel?: string;
   source: string;
+  inputPreview?: string;
 };
 
 /** Records queue activity while letting internal run owners distinguish steering from backlog. */
@@ -56,14 +58,26 @@ export function logMessageQueuedWithBacklogPolicy(
       } source=${params.source} queueDepth=${state.queueDepth} sessionState=${state.state}`,
     );
   }
-  emitDiagnosticEvent({
-    type: "message.queued",
+  const queuedEvent = {
+    type: "message.queued" as const,
     sessionId: state.sessionId,
     sessionKey: state.sessionKey,
     channel: params.channel,
     source: params.source,
     queueDepth: state.queueDepth,
-  });
+    inputPreview: params.inputPreview,
+  };
+  // clientContext rides the trusted privateData channel (onTrustedDiagnosticEvent),
+  // never the public payload — keeps the message.queued public contract unchanged.
+  // It lives here rather than in logMessageQueued because this helper owns both
+  // the backlog and the steering queue paths.
+  if (state.clientContext) {
+    emitInternalDiagnosticEventWithPrivateData(queuedEvent, {
+      clientContext: state.clientContext,
+    });
+  } else {
+    emitDiagnosticEvent(queuedEvent);
+  }
   markDiagnosticActivity();
 }
 
