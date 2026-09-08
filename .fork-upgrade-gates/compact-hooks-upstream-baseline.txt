@@ -1,0 +1,10 @@
+compactEmbeddedAgentSessionDirect hooks > falls through a failed subscription auth route to the prepared Platform route
+compactEmbeddedAgentSessionDirect hooks > keeps custom OpenAI-compatible compaction on OpenAI logical context
+compactEmbeddedAgentSessionDirect hooks > materializes subscription-auth OpenAI compaction while preserving logical context
+compactEmbeddedAgentSessionDirect hooks > routes unbound ChatGPT OAuth direct compaction through auth-aware codex selection
+compactEmbeddedAgentSessionDirect hooks > uses a prepared direct API-key fallback only after its profile tier fails
+compactEmbeddedAgentSessionDirect hooks > uses explicit Codex runtime policy for direct OpenAI compaction
+compactEmbeddedAgentSession hooks (ownsCompaction engine) > keeps queued native auth candidates uncollapsed until native resolution
+compactEmbeddedAgentSession hooks (ownsCompaction engine) > materializes the selected route before deriving compaction context budget
+compactEmbeddedAgentSession hooks (ownsCompaction engine) > prepares queued native harness auth without a host profile
+compactEmbeddedAgentSession hooks (ownsCompaction engine) > routes unbound ChatGPT OAuth queued compaction through auth-aware codex selection
