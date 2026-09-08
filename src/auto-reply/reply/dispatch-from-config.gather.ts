@@ -63,6 +63,30 @@ import { isReplyProfilerEnabled } from "./reply-timing-tracker.js";
 import { resolveRoutedDeliveryThreadId } from "./routed-delivery-thread.js";
 import { stageRemoteInboundMediaIfNeeded } from "./stage-remote-inbound-media.js";
 
+// Fork carry: the diagnostic lifecycle records what the user actually sent, so
+// a run can be identified in AgentWeave without joining back to the transcript.
+// Whitespace is folded and the text capped so a pasted document cannot bloat
+// every span; the command-aware fields come first because a native command turn
+// carries its payload there rather than on Body.
+function buildDiagnosticInputPreview(ctx: FinalizedMsgContext): string | undefined {
+  const raw =
+    normalizeOptionalString(ctx.BodyForCommands) ??
+    normalizeOptionalString(ctx.CommandBody) ??
+    normalizeOptionalString(ctx.RawBody) ??
+    normalizeOptionalString(ctx.Body);
+  if (!raw) {
+    return undefined;
+  }
+  const normalized = raw.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return undefined;
+  }
+  const maxChars = 1000;
+  return normalized.length <= maxChars
+    ? normalized
+    : `${normalized.slice(0, maxChars - 1).trimEnd()}…`;
+}
+
 export async function gatherDispatchRequest(
   params: DispatchFromConfigParams,
   messageAuditTerminal: InboundMessageAuditTerminalRecorder | undefined,
@@ -143,6 +167,7 @@ export async function gatherDispatchRequest(
     messageId,
     sessionKey,
     sessionId: lifecycleSessionId,
+    inputPreview: buildDiagnosticInputPreview(ctx),
     source: "dispatch",
     processingReason: "message_start",
     startedAtMs: startTime,
