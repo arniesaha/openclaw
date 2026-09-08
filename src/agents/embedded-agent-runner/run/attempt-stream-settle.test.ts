@@ -445,4 +445,66 @@ describe("prepareEmbeddedAttemptTransport", () => {
       },
     ]);
   });
+  it("stamps the agentweave session key header at the attempt call site", async () => {
+    // Fork carry regression: the resolver's own unit tests cover the stamp in
+    // isolation, so an upstream refactor that drops sessionKey from THIS call
+    // site leaves them green while the header silently disappears in prod.
+    const previous = process.env.OPENCLAW_AGENTWEAVE_SESSION_KEY_HEADER;
+    process.env.OPENCLAW_AGENTWEAVE_SESSION_KEY_HEADER = "1";
+    try {
+      let providerOptions: ProviderStreamOptions | undefined;
+      const providerStream = vi.fn((_model, _context, options) => {
+        providerOptions = options as ProviderStreamOptions;
+        return {} as never;
+      });
+      bindStreamLlmRuntime(providerStream, {
+        streamSimple: providerStream,
+        registry: { getApiProvider: () => undefined },
+      } as never);
+      const session = { agent: { streamFn: providerStream, transport: "auto" } };
+      const model = { api: "test-api", provider: "test-provider", id: "test-model-session-key" };
+      registerProviderStreamForModel.mockReturnValue(providerStream);
+
+      await prepareEmbeddedAttemptTransport({
+        attempt: {
+          config: {},
+          model,
+          modelId: model.id,
+          provider: model.provider,
+          runId: "run-session-key",
+          runtimePlan: {
+            auth: { forwardedAuthProfileId: undefined },
+            transport: { resolveExtraParams: () => ({}) },
+          },
+          sessionId: "session-native-session-key",
+          sessionKey: "agent:main:session-key",
+        },
+        session,
+        settingsManager: {
+          getGlobalSettings: () => ({}),
+          getProjectSettings: () => ({}),
+        },
+        sessionAgentId: "main",
+        workspaceDir: "/tmp",
+        workspaceOnly: false,
+        agentDir: "/tmp",
+        abortSignal: new AbortController().signal,
+        getProviderRuntimeHandle: () => ({ provider: model.provider, modelId: model.id }),
+        sandboxSessionKey: "agent:main:test",
+        codeModeControlsEnabled: false,
+        providerPromptState: { state: {}, effectiveContextTokenBudget: 128_000 },
+      } as unknown as PrepareTransportInput);
+
+      const context = { systemPrompt: "system", messages: [], tools: [] };
+      session.agent.streamFn(model as never, context as never, {});
+
+      expect(providerOptions?.headers?.["x-agentweave-session-key"]).toBe("agent:main:session-key");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OPENCLAW_AGENTWEAVE_SESSION_KEY_HEADER;
+      } else {
+        process.env.OPENCLAW_AGENTWEAVE_SESSION_KEY_HEADER = previous;
+      }
+    }
+  });
 });

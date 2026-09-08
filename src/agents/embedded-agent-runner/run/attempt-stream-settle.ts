@@ -536,6 +536,11 @@ export async function prepareEmbeddedAttemptTransport(input: {
     providerStreamFn: directProviderStreamFn,
     sessionId: attempt.sessionId,
     promptCacheKey: attempt.promptCacheKey,
+    // Fork carry: feeds withAgentweaveSessionKeyHeader, which stamps
+    // x-agentweave-session-key on outbound native LLM requests when
+    // OPENCLAW_AGENTWEAVE_SESSION_KEY_HEADER=1 (default off). Without it the
+    // agentweave proxy cannot join child llm.* spans to the parent turn span.
+    sessionKey: attempt.sessionKey,
     signal: input.abortSignal,
     model: attempt.model,
     resolvedApiKey: attempt.resolvedApiKey,
