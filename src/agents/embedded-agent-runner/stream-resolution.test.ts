@@ -1035,7 +1035,7 @@ describe("withAgentweaveSessionKeyHeader", () => {
   });
 });
 
-describe("resolveEmbeddedAgentStreamFn tail branch session key", () => {
+describe("resolveEmbeddedAgentStream tail branch session key", () => {
   const ENV = "OPENCLAW_AGENTWEAVE_SESSION_KEY_HEADER";
   const prev = process.env[ENV];
 
@@ -1053,7 +1053,7 @@ describe("resolveEmbeddedAgentStreamFn tail branch session key", () => {
       seen.push(options ?? {});
       return undefined as never;
     }) as never;
-    const streamFn = resolveEmbeddedAgentStreamFn({
+    const { streamFn } = resolveEmbeddedAgentStream({
       currentStreamFn: inner,
       sessionId: "s1",
       sessionKey,
