@@ -311,6 +311,7 @@ export async function executePreparedCompactionSession(runtime: PreparedCompacti
             agentDir,
             runtimePlan,
             sessionKey: sandboxSessionKey,
+            attributionSessionKey: params.sessionKey,
             sandboxToolPolicy: sandbox?.tools,
             messageProvider: resolvedMessageProvider,
             agentAccountId: params.agentAccountId,

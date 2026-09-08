@@ -31,6 +31,9 @@ export async function prepareCompactionSessionAgent(params: {
   agentDir: string;
   runtimePlan?: AgentRuntimePlan;
   sessionKey?: string;
+  // Run session key used for outbound attribution headers (x-agentweave-session-key).
+  // Differs from `sessionKey` above, which is sandbox/policy-scoped.
+  attributionSessionKey?: string;
   sandboxToolPolicy?: { allow?: string[]; deny?: string[] };
   messageProvider?: string;
   agentAccountId?: string | null;
@@ -70,6 +73,7 @@ export async function prepareCompactionSessionAgent(params: {
     transportAuthAvailable: Boolean(transportApiKey?.trim()),
     authProfileId: params.runtimePlan?.auth.forwardedAuthProfileId,
     authStorage: params.authStorage as never,
+    sessionKey: params.attributionSessionKey,
   }).streamFn;
   const providerTextTransforms = resolveProviderTextTransforms({
     provider: params.provider,
