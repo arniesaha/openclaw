@@ -12,9 +12,9 @@ import { resetDiagnosticSessionStateForTest } from "./diagnostic-session-state.j
 import {
   logMessageQueued,
   logSessionStateChange,
-  resetDiagnosticStateForTest,
   setDiagnosticSessionClientContext,
 } from "./diagnostic.js";
+import { resetDiagnosticStateForTest } from "./diagnostic.test-support.js";
 
 const UPSTREAM = normalizeDiagnosticClientContext({
   schemaVersion: "agentweave.context.v1",
