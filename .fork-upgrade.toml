@@ -1,0 +1,11 @@
+[upgrade]
+owner = "fork-maintainers"
+patch_budget = 5
+min_functional_units = 4
+max_functional_units = 8
+source_tag = "v2026.9.2"
+
+[policy]
+state_file = ".fork-upgrade-state.json"
+carry_manifest = ".fork-upgrade-carry.toml"
+require_explicit_retirement_for_pinned = true
