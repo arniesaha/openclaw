@@ -1,0 +1,68 @@
+# Capability-level carries. Source commits remain in docs/fork-upgrade/carry-archive-v2026.9.2.md.
+[[carry]]
+id = "model-diagnostic-api"
+owner = "fork-maintainers"
+kind = "functional"
+pinned = false
+upstream_pr = "https://github.com/openclaw/openclaw/pull/80497"
+commits = ["b76e75fa189375a39f7644a5a9343afd9895ab1d", "5ff7030255961d7f9c0dd7fe81532b4e4e5d2769"]
+tests = ["src/plugin-sdk/diagnostics.test.ts"]
+
+[[carry]]
+id = "provenance-otel-attribution"
+owner = "fork-maintainers"
+kind = "functional"
+pinned = false
+commits = [
+  "6d2e23f79c912622daab397c2f90300a53065d04",
+  "c6c135e8e48cd6af0db818c66bbf63aa6cb8457a",
+  "73b981591ee6b7ea6efcc22d23d6b626eabe3f34",
+  "8ab07fe1b1e5740f1bf8b112eab1a47cdab64657",
+  "5162925fcc7fc818abe2bff684e7522d54c6fdd2",
+  "30c5300e2a2a41114cd1e2270a8f8a765d7aefa0",
+  "35533a5de3e081fd537b8e1d7c5b596f67306c99",
+  "17cec88f506706451eb7d22400bcf90a96fedc37",
+  "f411dfdd937ea2bb3adc2310116e170c326d97d9",
+  "366074a4de07afd1d99c4e6dd498ec7409ec5e8e",
+  "778bdfdd2f00f95d262d392714424eaf3a7c859d",
+  "0f60aa9b475fd105b671844d634c28c489c0910d",
+  "82b60dc9c0486121108699befc0613b74a551d66",
+  "2a61aada5d142ea1b9ddf3762344ed5d42a9311b",
+]
+tests = [
+  "src/agents/embedded-agent-runner/stream-resolution.test.ts",
+  "extensions/diagnostics-otel/src/service.test.ts",
+]
+
+[[carry]]
+id = "native-provider-trace-propagation"
+owner = "fork-maintainers"
+kind = "functional"
+pinned = false
+commits = [
+  "8aa881a5b13fd1e56ffe13361c8891cd1d2b59a5",
+  "a38ec6ade09c32539d9dc7a2aa557dc620c7181d",
+  "59903bcc3f7b2647560f8b1d99414778af33af18",
+  "795cbbb2d94de999fc52e823f8a28103153d0b9f",
+]
+tests = ["src/auto-reply/reply-dispatch.test.ts"]
+
+[[carry]]
+id = "codex-w3c-trace-propagation"
+owner = "fork-maintainers"
+kind = "functional"
+pinned = false
+commits = [
+  "1054d063908fc0c96319b99d74971db34c986096",
+  "bb5d607d38070a6a57de20ac4a4dae195ce03ece",
+  "86bce91ca2fd98fe81a1720b2573fcdb74b0e8a7",
+]
+tests = ["src/agents/codex-app-server.test.ts"]
+
+[[carry]]
+id = "ios-assistant-bubble-dedupe"
+owner = "fork-maintainers"
+kind = "functional"
+pinned = true
+commits = ["37afc458a2f769609648d925493f0c443d5afc5d"]
+tests = ["apps/shared/OpenClawKit/Tests/OpenClawKitTests/ChatViewModelTests.swift"]
