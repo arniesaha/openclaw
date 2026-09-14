@@ -1,5 +1,9 @@
 // Process-local session-state tracker used by diagnostic stuck-session detection.
+import { isExecutionIdentityCollectionEnabled } from "../audit/audit-config.js";
+import { pseudonymizeExecutionIdentityRef } from "../audit/audit-identity.js";
+import { getRuntimeConfig } from "../config/config.js";
 import type { DiagnosticClientContext } from "../infra/diagnostic-client-context.js";
+import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 
 export type SessionStateValue = "idle" | "processing" | "waiting";
 
@@ -9,6 +13,7 @@ export type SessionState = {
   sessionKey?: string;
   sessionFile?: string;
   clientContext?: DiagnosticClientContext;
+  sessionCorrelationId?: string;
   lastActivity: number;
   generation?: number;
   lastStuckWarnAgeMs?: number;
@@ -128,6 +133,7 @@ function mergeSessionState(target: SessionState, source: SessionState): void {
     target.sessionFile = source.sessionFile;
   }
   target.clientContext ??= source.clientContext;
+  target.sessionCorrelationId ??= source.sessionCorrelationId;
   if (sourceIsNewer || sourceIsSameAgeAndMoreActive) {
     target.state = source.state;
   }
@@ -216,6 +222,48 @@ export function peekDiagnosticSessionState(ref: SessionRef): SessionState | unde
     diagnosticSessionStates.get(key) ??
     (ref.sessionId ? findStateEntryBySessionId(ref.sessionId)?.[1] : undefined)
   );
+}
+
+/**
+ * Stores an opaque, installation-local session pseudonym for trusted diagnostic
+ * listeners. Passing undefined clears an old value on a reused session state.
+ */
+export function setDiagnosticSessionCorrelationId(
+  ref: SessionRef,
+  sessionCorrelationId: string | undefined,
+): void {
+  if (sessionCorrelationId) {
+    getDiagnosticSessionState(ref).sessionCorrelationId = sessionCorrelationId;
+    return;
+  }
+  const existing = peekDiagnosticSessionState(ref);
+  if (existing) {
+    existing.sessionCorrelationId = undefined;
+  }
+}
+
+/** Refreshes the trusted-only session correlation under the existing audit opt-in. */
+export function refreshDiagnosticSessionCorrelation(ref: SessionRef): void {
+  const state = peekDiagnosticSessionState(ref);
+  const value = state?.sessionId ?? ref.sessionId ?? state?.sessionKey ?? ref.sessionKey;
+  try {
+    if (!value || !isExecutionIdentityCollectionEnabled(getRuntimeConfig())) {
+      setDiagnosticSessionCorrelationId(ref, undefined);
+      return;
+    }
+    setDiagnosticSessionCorrelationId(
+      ref,
+      pseudonymizeExecutionIdentityRef({
+        db: openOpenClawStateDatabase().db,
+        kind: "session",
+        scope: "openclaw.diagnostics.session.v1",
+        value,
+      }),
+    );
+  } catch {
+    // Diagnostics cannot interrupt a model request if the audit key/database is unavailable.
+    setDiagnosticSessionCorrelationId(ref, undefined);
+  }
 }
 
 /** Retires collector observations without resetting independent tool-loop or poll policy. */

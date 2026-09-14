@@ -60,6 +60,7 @@ import {
   isDiagnosticSessionStateCurrent,
   peekDiagnosticSessionState,
   pruneDiagnosticSessionStates,
+  refreshDiagnosticSessionCorrelation,
   resetDiagnosticSessionStateForTest,
   type SessionRef,
   type SessionState,
@@ -837,6 +838,7 @@ export function logSessionStateChange(
     return;
   }
   const state = getDiagnosticSessionState(params);
+  refreshDiagnosticSessionCorrelation(params);
   const isProbeSession = state.sessionId?.startsWith("probe-") ?? false;
   const prevState = state.state;
   state.state = params.state;
@@ -871,12 +873,12 @@ export function logSessionStateChange(
     inputPreview: params.inputPreview,
     taskLabel: params.taskLabel,
   };
-  // clientContext rides the trusted privateData channel (onTrustedDiagnosticEvent),
-  // never the public payload — keeps the event's public contract unchanged.
-  if (state.clientContext) {
-    emitInternalDiagnosticEventWithPrivateData(stateEvent, {
-      clientContext: state.clientContext,
-    });
+  const privateData = {
+    ...(state.clientContext ? { clientContext: state.clientContext } : {}),
+    ...(state.sessionCorrelationId ? { sessionCorrelationId: state.sessionCorrelationId } : {}),
+  };
+  if (Object.keys(privateData).length > 0) {
+    emitInternalDiagnosticEventWithPrivateData(stateEvent, privateData);
   } else {
     emitDiagnosticEvent(stateEvent);
   }
@@ -912,6 +914,9 @@ export function setDiagnosticSessionClientContext(
     existing.clientContext = undefined;
   }
 }
+
+/** Seeds or clears an opaque trusted-only session correlation value. */
+export { setDiagnosticSessionCorrelationId } from "./diagnostic-session-state.js";
 
 export function markDiagnosticSessionProgress(params: SessionRef) {
   if (!areDiagnosticsEnabledForProcess()) {

@@ -2,7 +2,11 @@ import { SpanStatusCode } from "@opentelemetry/api";
 import { normalizeDiagnosticValue } from "openclaw/plugin-sdk/diagnostic-runtime";
 import { redactSensitiveText } from "../api.js";
 import type { DiagnosticEventMetadata, DiagnosticEventPayload } from "../api.js";
-import { assignClientContextAttributes, clientContextKeys } from "./client-context-attributes.js";
+import {
+  assignClientContextAttributes,
+  assignSessionCorrelationAttribute,
+  clientContextKeys,
+} from "./client-context-attributes.js";
 import {
   addUpstreamRequestIdSpanEvent,
   assignGenAiModelCallAttrs,
@@ -33,7 +37,7 @@ export function createModelRecorders(runtime: DiagnosticsRecorderRuntime) {
     getTrackedInternalOrTrustedSpan,
     takeTrackedTrustedSpan,
     setSpanAttrs,
-    clientContextCache,
+    sessionAttributionCache,
     contentCapturePolicy,
     tracesEnabled,
   } = runtime;
@@ -108,7 +112,9 @@ export function createModelRecorders(runtime: DiagnosticsRecorderRuntime) {
     // onto the span at creation. This is best-effort: if model.call.started races
     // ahead of the seed event it misses here, but the completed/error recorders
     // re-resolve from the same cache, so attribution still lands on the finished span.
-    assignClientContextAttributes(spanAttrs, clientContextCache.resolve(clientContextKeys(evt)));
+    const sessionAttribution = sessionAttributionCache.resolve(clientContextKeys(evt));
+    assignClientContextAttributes(spanAttrs, sessionAttribution?.clientContext);
+    assignSessionCorrelationAttribute(spanAttrs, sessionAttribution?.sessionCorrelationId);
     return trackTrustedSpan(
       evt,
       metadata,
@@ -147,7 +153,9 @@ export function createModelRecorders(runtime: DiagnosticsRecorderRuntime) {
     assignModelCallPromptStatsAttrs(spanAttrs, evt);
     assignModelCallUsageAttrs(spanAttrs, evt);
     assignOtelModelContentAttributes(spanAttrs, modelContent, contentCapturePolicy);
-    assignClientContextAttributes(spanAttrs, clientContextCache.resolve(clientContextKeys(evt)));
+    const sessionAttribution = sessionAttributionCache.resolve(clientContextKeys(evt));
+    assignClientContextAttributes(spanAttrs, sessionAttribution?.clientContext);
+    assignSessionCorrelationAttribute(spanAttrs, sessionAttribution?.sessionCorrelationId);
     const span =
       takeTrackedTrustedSpan(evt, metadata) ??
       spanWithDuration(modelCallSpanName(evt), spanAttrs, evt.durationMs, {
@@ -199,7 +207,9 @@ export function createModelRecorders(runtime: DiagnosticsRecorderRuntime) {
     assignModelCallPromptStatsAttrs(spanAttrs, evt);
     assignModelCallUsageAttrs(spanAttrs, evt);
     assignOtelModelContentAttributes(spanAttrs, modelContent, contentCapturePolicy);
-    assignClientContextAttributes(spanAttrs, clientContextCache.resolve(clientContextKeys(evt)));
+    const sessionAttribution = sessionAttributionCache.resolve(clientContextKeys(evt));
+    assignClientContextAttributes(spanAttrs, sessionAttribution?.clientContext);
+    assignSessionCorrelationAttribute(spanAttrs, sessionAttribution?.sessionCorrelationId);
     const span =
       takeTrackedTrustedSpan(evt, metadata) ??
       spanWithDuration(modelCallSpanName(evt), spanAttrs, evt.durationMs, {

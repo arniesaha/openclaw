@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assignClientContextAttributes,
   clientContextKeys,
-  createClientContextCache,
+  createSessionAttributionCache,
 } from "./client-context-attributes.js";
 
 describe("assignClientContextAttributes", () => {
@@ -63,43 +63,43 @@ describe("clientContextKeys", () => {
   });
 });
 
-describe("createClientContextCache", () => {
+describe("createSessionAttributionCache", () => {
   it("resolves a bag stored under sessionId via the sessionKey candidate (cross-field join)", () => {
-    const cache = createClientContextCache();
+    const cache = createSessionAttributionCache();
     // Seed event populated only sessionId; model-call lookup offers sessionKey too.
-    cache.remember(["sid-1"], { agentId: "Conductor" });
-    expect(cache.resolve(["sid-1"])).toEqual({ agentId: "Conductor" });
+    cache.remember(["sid-1"], { clientContext: { agentId: "Conductor" } });
+    expect(cache.resolve(["sid-1"])).toEqual({ clientContext: { agentId: "Conductor" } });
   });
 
   it("stores under every candidate key so either field joins", () => {
-    const cache = createClientContextCache();
-    cache.remember(["sid-1", "skey-1"], { agentId: "Paperclip" });
-    expect(cache.resolve(["skey-1"])).toEqual({ agentId: "Paperclip" });
-    expect(cache.resolve(["sid-1"])).toEqual({ agentId: "Paperclip" });
+    const cache = createSessionAttributionCache();
+    cache.remember(["sid-1", "skey-1"], { clientContext: { agentId: "Paperclip" } });
+    expect(cache.resolve(["skey-1"])).toEqual({ clientContext: { agentId: "Paperclip" } });
+    expect(cache.resolve(["sid-1"])).toEqual({ clientContext: { agentId: "Paperclip" } });
   });
 
   it("returns undefined on miss, empty keys, or empty bag", () => {
-    const cache = createClientContextCache();
+    const cache = createSessionAttributionCache();
     expect(cache.resolve(["nope"])).toBeUndefined();
     expect(cache.resolve([])).toBeUndefined();
-    cache.remember([], { agentId: "x" });
+    cache.remember([], { clientContext: { agentId: "x" } });
     cache.remember(["k"], undefined);
     expect(cache.resolve(["k"])).toBeUndefined();
   });
 
   it("evicts oldest entries past the bound", () => {
-    const cache = createClientContextCache(2);
-    cache.remember(["a"], { n: 1 });
-    cache.remember(["b"], { n: 2 });
-    cache.remember(["c"], { n: 3 });
+    const cache = createSessionAttributionCache(2);
+    cache.remember(["a"], { clientContext: { n: 1 } });
+    cache.remember(["b"], { clientContext: { n: 2 } });
+    cache.remember(["c"], { clientContext: { n: 3 } });
     expect(cache.resolve(["a"])).toBeUndefined();
-    expect(cache.resolve(["b"])).toEqual({ n: 2 });
-    expect(cache.resolve(["c"])).toEqual({ n: 3 });
+    expect(cache.resolve(["b"])).toEqual({ clientContext: { n: 2 } });
+    expect(cache.resolve(["c"])).toEqual({ clientContext: { n: 3 } });
   });
 
   it("clear() drops everything", () => {
-    const cache = createClientContextCache();
-    cache.remember(["a"], { n: 1 });
+    const cache = createSessionAttributionCache();
+    cache.remember(["a"], { clientContext: { n: 1 } });
     cache.clear();
     expect(cache.resolve(["a"])).toBeUndefined();
   });
