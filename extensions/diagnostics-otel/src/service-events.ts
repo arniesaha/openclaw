@@ -3,7 +3,7 @@ import type {
   DiagnosticEventPayload,
   DiagnosticEventPrivateData,
 } from "../api.js";
-import { clientContextKeys, type ClientContextCache } from "./client-context-attributes.js";
+import { clientContextKeys, type SessionAttributionCache } from "./client-context-attributes.js";
 import { formatError } from "./service-exporter.js";
 import type { createDiagnosticsLogExporter } from "./service-logs.js";
 import type { createHarnessRecorders } from "./service-recorders-harness.js";
@@ -23,14 +23,24 @@ type OtelDiagnosticEventPrivateData = DiagnosticEventPrivateData &
     hostPluginId?: string;
   }>;
 
+function sessionAttribution(privateData: OtelDiagnosticEventPrivateData) {
+  return {
+    ...(privateData.clientContext ? { clientContext: privateData.clientContext } : {}),
+    ...(privateData.sessionCorrelationId
+      ? { sessionCorrelationId: privateData.sessionCorrelationId }
+      : {}),
+  };
+}
+
 export function createDiagnosticsEventHandler(params: {
-  clientContextCache: ClientContextCache;
+  sessionAttributionCache: SessionAttributionCache;
   logger: OtelLogger;
   recorders: DiagnosticsEventRecorders;
   recordLogRecord: ReturnType<typeof createDiagnosticsLogExporter>["recordLogRecord"];
   recordSecurityEvent: ReturnType<typeof createDiagnosticsLogExporter>["recordSecurityEvent"];
 }) {
-  const { clientContextCache, logger, recorders, recordLogRecord, recordSecurityEvent } = params;
+  const { sessionAttributionCache, logger, recorders, recordLogRecord, recordSecurityEvent } =
+    params;
   const {
     recordGatewayEventLoopSample,
     recordGatewayRpc,
@@ -107,11 +117,9 @@ export function createDiagnosticsEventHandler(params: {
           recordWebhookError(evt);
           return;
         case "message.queued":
-          // Seed the cache before recording: these two lifecycle events are the only
-          // carriers of trusted clientContext, and model.call spans join against it by
-          // sessionId/sessionKey. An absent bag clears the aliases so a reused session
-          // is never attributed to the previous caller.
-          clientContextCache.remember(clientContextKeys(evt), privateData.clientContext);
+          // Lifecycle events seed trusted attribution by session aliases. An empty
+          // private-data bag clears the aliases to prevent reuse misattribution.
+          sessionAttributionCache.remember(clientContextKeys(evt), sessionAttribution(privateData));
           recordMessageQueued(evt);
           return;
         case "message.received":
@@ -145,7 +153,7 @@ export function createDiagnosticsEventHandler(params: {
           recordLaneDequeue(evt);
           return;
         case "session.state":
-          clientContextCache.remember(clientContextKeys(evt), privateData.clientContext);
+          sessionAttributionCache.remember(clientContextKeys(evt), sessionAttribution(privateData));
           recordSessionState(evt);
           break;
         case "session.long_running":

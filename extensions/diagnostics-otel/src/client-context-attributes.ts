@@ -3,6 +3,12 @@ import type { DiagnosticEventPrivateData } from "../api.js";
 /** The opaque, core-bounded attribution bag (depth/keys/bytes already capped upstream). */
 type ClientContextBag = NonNullable<DiagnosticEventPrivateData["clientContext"]>;
 
+/** Trusted lifecycle attribution joined onto the selected model-call trace spans. */
+type SessionDiagnosticAttribution = Readonly<{
+  clientContext?: ClientContextBag;
+  sessionCorrelationId?: string;
+}>;
+
 /** Defensive cap in case a value slips past the core size bounds. */
 const MAX_CLIENT_CONTEXT_ATTRIBUTE_CHARS = 4096;
 
@@ -56,45 +62,68 @@ export function assignClientContextAttributes(
   }
 }
 
+/** Stamp the already-pseudonymized core session identity onto a model-call span. */
+export function assignSessionCorrelationAttribute(
+  attributes: Record<string, string | number | boolean>,
+  spanName: string,
+  sessionCorrelationId: string | undefined,
+): void {
+  if (spanName === "openclaw.model.call" && sessionCorrelationId) {
+    attributes["openclaw.session.correlation_id"] = sessionCorrelationId;
+  }
+}
+
 /** Bound on remembered entries (counts each candidate key separately). */
 const DEFAULT_MAX_REMEMBERED_ENTRIES = 1024;
 
-export type ClientContextCache = {
-  remember(keys: string[], clientContext: ClientContextBag | undefined): void;
-  resolve(keys: string[]): ClientContextBag | undefined;
+export type SessionAttributionCache = {
+  remember(keys: string[], attribution: SessionDiagnosticAttribution | undefined): void;
+  resolve(keys: string[]): SessionDiagnosticAttribution | undefined;
   clear(): void;
 };
 
+type SessionAttributionCacheEntry = {
+  attribution: SessionDiagnosticAttribution;
+  keys: string[];
+};
+
 /**
- * Per-run cache of the seeded clientContext. Populated from the lifecycle seed
- * events (`session.state` / `message.queued`) and read when building the child
- * `model.call.*` spans, which do not carry the bag themselves. Bounded by
- * insertion order so a long-lived gateway process cannot accumulate stale runs.
+ * Per-run cache of trusted lifecycle attribution. Populated from `session.state`
+ * and `message.queued`, then read only when building `model.call.*` trace spans.
+ * Bounded by insertion order so a long-lived gateway process cannot accumulate
+ * stale runs.
  */
-export function createClientContextCache(
+export function createSessionAttributionCache(
   maxEntries = DEFAULT_MAX_REMEMBERED_ENTRIES,
-): ClientContextCache {
-  const byKey = new Map<string, ClientContextBag>();
+): SessionAttributionCache {
+  const byKey = new Map<string, SessionAttributionCacheEntry>();
   return {
-    remember(keys, clientContext) {
+    remember(keys, attribution) {
       if (keys.length === 0) {
         return;
       }
-      if (!clientContext) {
-        // Unseeded (or reused-with-invalid) lifecycle event: drop any stale bag for
-        // these aliases so a later model.call on a reused sessionId/sessionKey is
-        // never misattributed to the previous caller. Mirrors the core session-state
-        // clear (diagnostic.ts sets state.clientContext = undefined on reuse), which
-        // is the same event that arrives here with privateData.clientContext absent.
+      if (!attribution?.clientContext && !attribution?.sessionCorrelationId) {
+        // Unseeded (or reused-with-invalid) lifecycle event: drop all stale
+        // attribution for these aliases so a later model.call cannot inherit a
+        // previous caller's client context or session pseudonym.
         for (const key of keys) {
-          byKey.delete(key);
+          const entry = byKey.get(key);
+          if (!entry) {
+            continue;
+          }
+          for (const alias of entry.keys) {
+            if (byKey.get(alias) === entry) {
+              byKey.delete(alias);
+            }
+          }
         }
         return;
       }
+      const entry = { attribution, keys: [...keys] };
       for (const key of keys) {
         // Refresh insertion order so the most-recently-seen run survives eviction.
         byKey.delete(key);
-        byKey.set(key, clientContext);
+        byKey.set(key, entry);
       }
       while (byKey.size > maxEntries) {
         const oldest = byKey.keys().next().value;
@@ -108,7 +137,7 @@ export function createClientContextCache(
       for (const key of keys) {
         const hit = byKey.get(key);
         if (hit) {
-          return hit;
+          return hit.attribution;
         }
       }
       return undefined;

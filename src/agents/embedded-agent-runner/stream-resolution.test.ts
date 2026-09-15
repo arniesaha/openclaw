@@ -971,13 +971,20 @@ describe("resolveEmbeddedAgentStream", () => {
 
 describe("withAgentweaveSessionKeyHeader", () => {
   const ENV = "OPENCLAW_AGENTWEAVE_SESSION_KEY_HEADER";
+  const SESSION_KEY_ENV = "AGENTWEAVE_SESSION_KEY";
   const prev = process.env[ENV];
+  const previousSessionKey = process.env[SESSION_KEY_ENV];
 
   afterEach(() => {
     if (prev === undefined) {
       delete process.env[ENV];
     } else {
       process.env[ENV] = prev;
+    }
+    if (previousSessionKey === undefined) {
+      delete process.env[SESSION_KEY_ENV];
+    } else {
+      process.env[SESSION_KEY_ENV] = previousSessionKey;
     }
   });
 
@@ -997,6 +1004,18 @@ describe("withAgentweaveSessionKeyHeader", () => {
       "agent:main:conductor",
     );
     expect(result.sessionId).toBe("s1");
+  });
+
+  it("prefers the opaque AgentWeave session key and cleans it up after the test", () => {
+    process.env[ENV] = "1";
+    process.env[SESSION_KEY_ENV] = "hmac-sha256:v1:key-id:opaque-digest";
+    const result = requireRecord(
+      withAgentweaveSessionKeyHeader({ sessionId: "s1" } as never, "agent:main:conductor"),
+      "stamped options",
+    );
+    expect(requireRecord(result.headers, "headers")["x-agentweave-session-key"]).toBe(
+      "hmac-sha256:v1:key-id:opaque-digest",
+    );
   });
 
   it("does not stamp an empty header when sessionKey is absent", () => {
