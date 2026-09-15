@@ -4,7 +4,7 @@ import type { DiagnosticEventPrivateData } from "../api.js";
 type ClientContextBag = NonNullable<DiagnosticEventPrivateData["clientContext"]>;
 
 /** Trusted lifecycle attribution joined onto the selected model-call trace spans. */
-export type SessionDiagnosticAttribution = Readonly<{
+type SessionDiagnosticAttribution = Readonly<{
   clientContext?: ClientContextBag;
   sessionCorrelationId?: string;
 }>;
@@ -65,9 +65,10 @@ export function assignClientContextAttributes(
 /** Stamp the already-pseudonymized core session identity onto a model-call span. */
 export function assignSessionCorrelationAttribute(
   attributes: Record<string, string | number | boolean>,
+  spanName: string,
   sessionCorrelationId: string | undefined,
 ): void {
-  if (sessionCorrelationId) {
+  if (spanName === "openclaw.model.call" && sessionCorrelationId) {
     attributes["openclaw.session.correlation_id"] = sessionCorrelationId;
   }
 }
@@ -81,6 +82,11 @@ export type SessionAttributionCache = {
   clear(): void;
 };
 
+type SessionAttributionCacheEntry = {
+  attribution: SessionDiagnosticAttribution;
+  keys: string[];
+};
+
 /**
  * Per-run cache of trusted lifecycle attribution. Populated from `session.state`
  * and `message.queued`, then read only when building `model.call.*` trace spans.
@@ -90,7 +96,7 @@ export type SessionAttributionCache = {
 export function createSessionAttributionCache(
   maxEntries = DEFAULT_MAX_REMEMBERED_ENTRIES,
 ): SessionAttributionCache {
-  const byKey = new Map<string, SessionDiagnosticAttribution>();
+  const byKey = new Map<string, SessionAttributionCacheEntry>();
   return {
     remember(keys, attribution) {
       if (keys.length === 0) {
@@ -101,14 +107,23 @@ export function createSessionAttributionCache(
         // attribution for these aliases so a later model.call cannot inherit a
         // previous caller's client context or session pseudonym.
         for (const key of keys) {
-          byKey.delete(key);
+          const entry = byKey.get(key);
+          if (!entry) {
+            continue;
+          }
+          for (const alias of entry.keys) {
+            if (byKey.get(alias) === entry) {
+              byKey.delete(alias);
+            }
+          }
         }
         return;
       }
+      const entry = { attribution, keys: [...keys] };
       for (const key of keys) {
         // Refresh insertion order so the most-recently-seen run survives eviction.
         byKey.delete(key);
-        byKey.set(key, attribution);
+        byKey.set(key, entry);
       }
       while (byKey.size > maxEntries) {
         const oldest = byKey.keys().next().value;
@@ -122,7 +137,7 @@ export function createSessionAttributionCache(
       for (const key of keys) {
         const hit = byKey.get(key);
         if (hit) {
-          return hit;
+          return hit.attribution;
         }
       }
       return undefined;

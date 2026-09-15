@@ -915,9 +915,6 @@ export function setDiagnosticSessionClientContext(
   }
 }
 
-/** Seeds or clears an opaque trusted-only session correlation value. */
-export { setDiagnosticSessionCorrelationId } from "./diagnostic-session-state.js";
-
 export function markDiagnosticSessionProgress(params: SessionRef) {
   if (!areDiagnosticsEnabledForProcess()) {
     return;

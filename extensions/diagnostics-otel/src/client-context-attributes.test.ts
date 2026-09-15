@@ -87,6 +87,13 @@ describe("createSessionAttributionCache", () => {
     expect(cache.resolve(["k"])).toBeUndefined();
   });
 
+  it("clears every seeded alias when an unseeded lifecycle event supplies one alias", () => {
+    const cache = createSessionAttributionCache();
+    cache.remember(["sid-1", "skey-1"], { sessionCorrelationId: "opaque-token" });
+    cache.remember(["sid-1"], undefined);
+    expect(cache.resolve(["sid-1", "skey-1"])).toBeUndefined();
+  });
+
   it("evicts oldest entries past the bound", () => {
     const cache = createSessionAttributionCache(2);
     cache.remember(["a"], { clientContext: { n: 1 } });

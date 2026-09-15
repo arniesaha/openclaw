@@ -113,12 +113,17 @@ export function createModelRecorders(runtime: DiagnosticsRecorderRuntime) {
     // ahead of the seed event it misses here, but the completed/error recorders
     // re-resolve from the same cache, so attribution still lands on the finished span.
     const sessionAttribution = sessionAttributionCache.resolve(clientContextKeys(evt));
+    const spanName = modelCallSpanName(evt);
     assignClientContextAttributes(spanAttrs, sessionAttribution?.clientContext);
-    assignSessionCorrelationAttribute(spanAttrs, sessionAttribution?.sessionCorrelationId);
+    assignSessionCorrelationAttribute(
+      spanAttrs,
+      spanName,
+      sessionAttribution?.sessionCorrelationId,
+    );
     return trackTrustedSpan(
       evt,
       metadata,
-      spanWithDuration(modelCallSpanName(evt), spanAttrs, undefined, {
+      spanWithDuration(spanName, spanAttrs, undefined, {
         kind: modelCallSpanKind(),
         parentContext: activeTrustedParentContext(evt, metadata),
         startTimeMs: evt.ts,
@@ -154,11 +159,16 @@ export function createModelRecorders(runtime: DiagnosticsRecorderRuntime) {
     assignModelCallUsageAttrs(spanAttrs, evt);
     assignOtelModelContentAttributes(spanAttrs, modelContent, contentCapturePolicy);
     const sessionAttribution = sessionAttributionCache.resolve(clientContextKeys(evt));
+    const spanName = modelCallSpanName(evt);
     assignClientContextAttributes(spanAttrs, sessionAttribution?.clientContext);
-    assignSessionCorrelationAttribute(spanAttrs, sessionAttribution?.sessionCorrelationId);
+    assignSessionCorrelationAttribute(
+      spanAttrs,
+      spanName,
+      sessionAttribution?.sessionCorrelationId,
+    );
     const span =
       takeTrackedTrustedSpan(evt, metadata) ??
-      spanWithDuration(modelCallSpanName(evt), spanAttrs, evt.durationMs, {
+      spanWithDuration(spanName, spanAttrs, evt.durationMs, {
         kind: modelCallSpanKind(),
         parentContext: activeTrustedParentContext(evt, metadata),
         endTimeMs: evt.ts,
@@ -208,11 +218,16 @@ export function createModelRecorders(runtime: DiagnosticsRecorderRuntime) {
     assignModelCallUsageAttrs(spanAttrs, evt);
     assignOtelModelContentAttributes(spanAttrs, modelContent, contentCapturePolicy);
     const sessionAttribution = sessionAttributionCache.resolve(clientContextKeys(evt));
+    const spanName = modelCallSpanName(evt);
     assignClientContextAttributes(spanAttrs, sessionAttribution?.clientContext);
-    assignSessionCorrelationAttribute(spanAttrs, sessionAttribution?.sessionCorrelationId);
+    assignSessionCorrelationAttribute(
+      spanAttrs,
+      spanName,
+      sessionAttribution?.sessionCorrelationId,
+    );
     const span =
       takeTrackedTrustedSpan(evt, metadata) ??
-      spanWithDuration(modelCallSpanName(evt), spanAttrs, evt.durationMs, {
+      spanWithDuration(spanName, spanAttrs, evt.durationMs, {
         kind: modelCallSpanKind(),
         parentContext: activeTrustedParentContext(evt, metadata),
         endTimeMs: evt.ts,

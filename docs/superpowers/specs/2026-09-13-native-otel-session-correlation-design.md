@@ -127,14 +127,14 @@ the plugin/core ownership boundary.
 
 ## Implementation surfaces
 
-| Surface | Change |
-| --- | --- |
-| `src/audit/audit-identity.ts` | Add the `session` execution-identity kind and its fixed diagnostics scope. |
-| Lifecycle diagnostic producer and `src/infra/diagnostic-events.ts` | Compute and attach `sessionCorrelationId` under the existing audit opt-in; expose the type only through trusted private data. |
-| `src/plugin-sdk/diagnostic-runtime.ts` | Continue exporting the shared private-data type; no AgentWeave name enters the SDK. |
-| `extensions/diagnostics-otel/src/client-context-attributes.ts` and model recorders | Generalize the bounded alias cache to retain the opaque correlation token and stamp it on model-call spans. |
-| `plugins/openclaw-agentweave-bridge` (AgentWeave repo) | Extend trusted private-data typing and use the opaque token for bridge turn-session attribution. |
-| `deploy/k8s/monitoring/otel-collector.yaml` (AgentWeave repo) | Add a selected, non-overwriting native correlation mapping after content stripping. |
+| Surface                                                                            | Change                                                                                                                        |
+| ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `src/audit/audit-identity.ts`                                                      | Add the `session` execution-identity kind and its fixed diagnostics scope.                                                    |
+| Lifecycle diagnostic producer and `src/infra/diagnostic-events.ts`                 | Compute and attach `sessionCorrelationId` under the existing audit opt-in; expose the type only through trusted private data. |
+| `src/plugin-sdk/diagnostic-runtime.ts`                                             | Continue exporting the shared private-data type; no AgentWeave name enters the SDK.                                           |
+| `extensions/diagnostics-otel/src/client-context-attributes.ts` and model recorders | Generalize the bounded alias cache to retain the opaque correlation token and stamp it on model-call spans.                   |
+| `plugins/openclaw-agentweave-bridge` (AgentWeave repo)                             | Extend trusted private-data typing and use the opaque token for bridge turn-session attribution.                              |
+| `deploy/k8s/monitoring/otel-collector.yaml` (AgentWeave repo)                      | Add a selected, non-overwriting native correlation mapping after content stripping.                                           |
 
 The execution-identity audit feature remains startup-scoped. Enabling it is an
 operator decision and requires the normal Gateway restart; changing OTel

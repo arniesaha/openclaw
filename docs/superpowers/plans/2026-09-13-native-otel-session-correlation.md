@@ -25,24 +25,25 @@
 
 ## File structure
 
-| File | Responsibility |
-| --- | --- |
-| `src/audit/audit-identity.ts` | Versioned, persisted-key HMAC session pseudonym. |
-| `src/logging/diagnostic-session-state.ts` | Bounded in-process storage of the opaque per-session value. |
-| `src/logging/diagnostic.ts` and `src/logging/diagnostic-runtime.ts` | Lifecycle private-data projection and stale-value clearing. |
-| `src/infra/diagnostic-events.ts` | Typed trusted private-data contract. |
-| `src/logging/diagnostic-client-context-events.test.ts` | Public/private lifecycle-boundary regression coverage. |
-| `extensions/diagnostics-otel/src/client-context-attributes.ts` | Alias cache extended to store the opaque token. |
-| `extensions/diagnostics-otel/src/service-recorders-model.ts` | Selected model-span projection. |
-| `extensions/diagnostics-otel/src/service.test.ts` | Exporter boundary coverage. |
-| `plugins/openclaw-agentweave-bridge/src/host-diagnostic-contract.ts` | Bridge view of the new trusted private-data field. |
-| `plugins/openclaw-agentweave-bridge/src/service.ts` | Bridge turn attribution uses the opaque token when available. |
-| `deploy/k8s/monitoring/otel-collector.yaml` | Selected non-overwriting Collector transform. |
+| File                                                                                      | Responsibility                                                       |
+| ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `src/audit/audit-identity.ts`                                                             | Versioned, persisted-key HMAC session pseudonym.                     |
+| `src/logging/diagnostic-session-state.ts`                                                 | Bounded in-process storage of the opaque per-session value.          |
+| `src/logging/diagnostic.ts` and `src/logging/diagnostic-runtime.ts`                       | Lifecycle private-data projection and stale-value clearing.          |
+| `src/infra/diagnostic-events.ts`                                                          | Typed trusted private-data contract.                                 |
+| `src/logging/diagnostic-client-context-events.test.ts`                                    | Public/private lifecycle-boundary regression coverage.               |
+| `extensions/diagnostics-otel/src/client-context-attributes.ts`                            | Alias cache extended to store the opaque token.                      |
+| `extensions/diagnostics-otel/src/service-recorders-model.ts`                              | Selected model-span projection.                                      |
+| `extensions/diagnostics-otel/src/service.test.ts`                                         | Exporter boundary coverage.                                          |
+| `plugins/openclaw-agentweave-bridge/src/host-diagnostic-contract.ts`                      | Bridge view of the new trusted private-data field.                   |
+| `plugins/openclaw-agentweave-bridge/src/service.ts`                                       | Bridge turn attribution uses the opaque token when available.        |
+| `deploy/k8s/monitoring/otel-collector.yaml`                                               | Selected non-overwriting Collector transform.                        |
 | `scripts/verify-native-collector-mapping.py` and `tests/test_native_collector_mapping.py` | Safe synthetic Tempo probe and pinned-Collector regression coverage. |
 
 ## Task 1: Add the core opaque session-correlation contract
 
 **Files:**
+
 - Modify: `src/audit/audit-identity.ts`
 - Modify: `src/logging/diagnostic-session-state.ts`
 - Modify: `src/logging/diagnostic.ts`
@@ -51,6 +52,7 @@
 - Test: `src/logging/diagnostic-client-context-events.test.ts`
 
 **Interfaces:**
+
 - Consumes: `isExecutionIdentityCollectionEnabled(cfg)` and `pseudonymizeExecutionIdentityRef({ db, kind, scope, value })`.
 - Produces: `DiagnosticEventPrivateData.sessionCorrelationId?: string` on trusted `session.state` and `message.queued` events.
 
@@ -102,9 +104,7 @@
   ```ts
   const privateData = {
     ...(state.clientContext ? { clientContext: state.clientContext } : {}),
-    ...(state.sessionCorrelationId
-      ? { sessionCorrelationId: state.sessionCorrelationId }
-      : {}),
+    ...(state.sessionCorrelationId ? { sessionCorrelationId: state.sessionCorrelationId } : {}),
   };
   ```
 
@@ -134,6 +134,7 @@
 ## Task 2: Project the token onto native model-call spans only
 
 **Files:**
+
 - Modify: `extensions/diagnostics-otel/src/client-context-attributes.ts`
 - Modify: `extensions/diagnostics-otel/src/service-events.ts`
 - Modify: `extensions/diagnostics-otel/src/service-recorders-model.ts`
@@ -141,6 +142,7 @@
 - Test: `extensions/diagnostics-otel/src/service.test.ts`
 
 **Interfaces:**
+
 - Consumes: lifecycle `privateData.sessionCorrelationId` from Task 1.
 - Produces: `openclaw.session.correlation_id?: string` on only `openclaw.model.call` spans.
 
@@ -219,11 +221,13 @@
 **Repository:** the current AgentWeave checkout (do not assume a fixed local path)
 
 **Files:**
+
 - Modify: `plugins/openclaw-agentweave-bridge/src/host-diagnostic-contract.ts`
 - Modify: `plugins/openclaw-agentweave-bridge/src/service.ts`
 - Test: `plugins/openclaw-agentweave-bridge/src/service.test.ts`
 
 **Interfaces:**
+
 - Consumes: `HostDiagnosticPrivateData.sessionCorrelationId?: string` from Task 1.
 - Produces: bridge `openclaw.turn` session attribution equal to the opaque native value whenever it is present.
 
@@ -232,7 +236,9 @@
   Feed the service a `message.queued` or `session.state` event plus:
 
   ```ts
-  { sessionCorrelationId: "hmac-sha256:v1:0123456789abcdef0123456789abcdef:abc" }
+  {
+    sessionCorrelationId: "hmac-sha256:v1:0123456789abcdef0123456789abcdef:abc";
+  }
   ```
 
   Assert the created turn span has `prov.session.id` equal to that exact token and that the raw `sessionKey` is not placed in a span attribute.
@@ -274,12 +280,14 @@
 **Repository:** the current AgentWeave checkout (do not assume a fixed local path)
 
 **Files:**
+
 - Modify: `deploy/k8s/monitoring/otel-collector.yaml`
 - Modify: `scripts/verify-native-collector-mapping.py`
 - Modify: `tests/test_native_collector_mapping.py`
 - Modify: `tests/fixtures/openclaw-native-model-call-usage.json`
 
 **Interfaces:**
+
 - Consumes: `openclaw.session.correlation_id` from Task 2.
 - Produces: non-overwriting `prov.session.id` on selected OpenClaw native model-call spans.
 
@@ -338,9 +346,11 @@
 ## Task 5: Canary and release evidence
 
 **Files:**
+
 - Modify: `docs/openclaw-native-otel-parity.md` in AgentWeave only after evidence exists.
 
 **Interfaces:**
+
 - Consumes: merged Tasks 1-4.
 - Produces: operator evidence that native correlation is safe to use, not authorization to remove the proxy.
 

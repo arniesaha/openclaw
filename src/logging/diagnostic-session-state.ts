@@ -228,7 +228,7 @@ export function peekDiagnosticSessionState(ref: SessionRef): SessionState | unde
  * Stores an opaque, installation-local session pseudonym for trusted diagnostic
  * listeners. Passing undefined clears an old value on a reused session state.
  */
-export function setDiagnosticSessionCorrelationId(
+function setDiagnosticSessionCorrelationId(
   ref: SessionRef,
   sessionCorrelationId: string | undefined,
 ): void {
