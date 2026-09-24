@@ -1063,7 +1063,7 @@ describe("resolveEmbeddedAgentStream tail branch session key", () => {
       sessionKey,
       model: { provider: "custom-proxy", api: "custom-api", id: "m1" } as never,
     });
-    streamFn({ provider: "custom-proxy", id: "m1" } as never, {} as never, {});
+    void streamFn({ provider: "custom-proxy", id: "m1" } as never, {} as never, {});
     return { inner, streamFn, options: seen[0] ?? {} };
   }
 
