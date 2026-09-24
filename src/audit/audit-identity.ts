@@ -42,6 +42,7 @@ type ExecutionIdentityRefKind =
   | "grant"
   | "principal"
   | "runtime"
+  | "session"
   | "target";
 
 function registerAuditIdentityKeyForRedaction(key: Uint8Array): void {
