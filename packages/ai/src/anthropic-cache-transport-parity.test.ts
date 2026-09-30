@@ -7,6 +7,7 @@ import {
   context,
   registerParityHostLifecycle,
 } from "./provider-transport-parity.test-support.js";
+import { ANTHROPIC_CLAUDE_CODE_VERSION } from "./providers/anthropic-model-contract.js";
 import { SYSTEM_PROMPT_CACHE_BOUNDARY } from "./utils/system-prompt-cache-boundary.js";
 
 function markers(value: unknown, path = ""): Array<{ path: string; control: unknown }> {
@@ -112,7 +113,7 @@ describe("Anthropic cache checkpoint transport parity", () => {
           expect.arrayContaining([
             {
               type: "text",
-              text: "x-anthropic-billing-header: cc_version=2.1.280; cc_entrypoint=sdk-cli;",
+              text: `x-anthropic-billing-header: cc_version=${ANTHROPIC_CLAUDE_CODE_VERSION}; cc_entrypoint=sdk-cli;`,
             },
             {
               type: "text",

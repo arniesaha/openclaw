@@ -15,6 +15,7 @@ import {
   type AiInlineContentBlock,
 } from "../host.js";
 import { anthropicServerSideFallbackCases } from "../providers/anthropic-server-fallback.test-support.js";
+import { ANTHROPIC_CLAUDE_CODE_VERSION } from "../providers/anthropic-model-contract.js";
 import { createZeroUsage } from "../usage.test-support.js";
 import { onLlmRequestActivity } from "../utils/llm-request-activity.js";
 import { createCompactionCapture } from "./anthropic-compaction-replay.js";
@@ -2452,7 +2453,7 @@ describe("anthropic transport stream", () => {
     const firstCallParams = latestAnthropicRequest().payload;
     const system = requireArray(firstCallParams.system, "system");
     expect(requireRecord(system[0], "billing system item").text).toBe(
-      "x-anthropic-billing-header: cc_version=2.1.280; cc_entrypoint=sdk-cli;",
+      `x-anthropic-billing-header: cc_version=${ANTHROPIC_CLAUDE_CODE_VERSION}; cc_entrypoint=sdk-cli;`,
     );
     expect(
       system.some(

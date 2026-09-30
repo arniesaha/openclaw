@@ -3,18 +3,23 @@ import {
   captureAnthropicRequest,
   registerParityHostLifecycle,
 } from "./provider-transport-parity.test-support.js";
+import { ANTHROPIC_CLAUDE_CODE_VERSION } from "./providers/anthropic-model-contract.js";
 
 describe("Anthropic OAuth client identity", () => {
   registerParityHostLifecycle();
 
   it.each<{ name: string; headers?: Record<string, string>; expected: string }>([
-    { name: "missing CLI", headers: undefined, expected: "2.1.280" },
-    { name: "older CLI", headers: { "user-agent": "claude-cli/2.1.234" }, expected: "2.1.280" },
+    { name: "missing CLI", headers: undefined, expected: ANTHROPIC_CLAUDE_CODE_VERSION },
+    {
+      name: "older CLI",
+      headers: { "user-agent": "claude-cli/2.1.234" },
+      expected: ANTHROPIC_CLAUDE_CODE_VERSION,
+    },
     { name: "newer CLI", headers: { "User-Agent": "claude-cli/3.0.0" }, expected: "3.0.0" },
     {
       name: "prerelease",
       headers: { "user-agent": "claude-cli/3.0.0-beta.1" },
-      expected: "2.1.280",
+      expected: ANTHROPIC_CLAUDE_CODE_VERSION,
     },
   ])("uses one floor-bounded identity for $name", async ({ headers, expected }) => {
     for (const implementation of ["provider", "transport"] as const) {

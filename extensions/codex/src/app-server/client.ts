@@ -667,7 +667,9 @@ export class CodexAppServerClient {
     }
     // Carry the parent context through retries without replacing request ownership.
     const message: RpcRequest = {
-      id, method, params: params as JsonValue | undefined,
+      id,
+      method,
+      params: params as JsonValue | undefined,
       ...(options.traceparent ? { trace: { traceparent: options.traceparent } } : {}),
     };
     const attempt = createCodexRequestAttempt({

@@ -47,9 +47,55 @@ export {
   supportsClaudeNativeXhighEffort,
 } from "@openclaw/llm-core";
 
-// Anthropic gates OAuth models with claude_code_version_too_old. Keep this floor
-// at the published Claude Code release (2.1.280); older or absent CLIs must not downgrade it.
-export const ANTHROPIC_CLAUDE_CODE_VERSION = "2.1.280";
+// Minimum Claude Code version the API accepts for current Claude models.
+const ANTHROPIC_CLAUDE_CODE_VERSION_FLOOR = "2.1.280";
+
+function isClaudeCodeVersionAtLeast(candidate: string | undefined, minimum: string): boolean {
+  if (!candidate || !/^\d+\.\d+\.\d+$/.test(candidate)) {
+    return false;
+  }
+  const components = candidate.split(".").map(Number);
+  if (!components.every(Number.isSafeInteger)) {
+    return false;
+  }
+  const floor = minimum.split(".").map(Number);
+  const differing = components.findIndex((component, index) => component !== floor[index]);
+  return differing === -1 || components[differing]! > floor[differing]!;
+}
+
+// Prefer the Claude Code installed on the host so the advertised version tracks
+// `claude update` instead of a hardcoded constant. OPENCLAW_CLAUDE_CODE_VERSION
+// overrides detection; the floor is used when nothing newer is found.
+function resolveClaudeCodeVersion(): string {
+  const proc = (globalThis as { process?: NodeJS.Process }).process;
+  const override = proc?.env?.OPENCLAW_CLAUDE_CODE_VERSION?.trim();
+  if (isClaudeCodeVersionAtLeast(override, ANTHROPIC_CLAUDE_CODE_VERSION_FLOOR)) {
+    return override!;
+  }
+  try {
+    const childProcess = proc?.getBuiltinModule?.("node:child_process") as
+      | typeof import("node:child_process")
+      | undefined;
+    const output = childProcess?.execFileSync(
+      proc?.env?.OPENCLAW_CLAUDE_BIN || "claude",
+      ["--version"],
+      {
+        encoding: "utf8",
+        timeout: 5000,
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    );
+    const detected = output?.match(/\d+\.\d+\.\d+/)?.[0];
+    if (isClaudeCodeVersionAtLeast(detected, ANTHROPIC_CLAUDE_CODE_VERSION_FLOOR)) {
+      return detected!;
+    }
+  } catch {
+    // No claude binary on this host; fall back to the floor.
+  }
+  return ANTHROPIC_CLAUDE_CODE_VERSION_FLOOR;
+}
+
+export const ANTHROPIC_CLAUDE_CODE_VERSION = resolveClaudeCodeVersion();
 
 /** Build OAuth headers and the matching billing identity from one request snapshot. */
 export function buildAnthropicClaudeCodeIdentity(
@@ -69,20 +115,8 @@ export function buildAnthropicClaudeCodeIdentity(
   }
   let version = ANTHROPIC_CLAUDE_CODE_VERSION;
   const candidate = headers.get("user-agent")?.match(/^claude-cli\/(\d+\.\d+\.\d+)$/)?.[1];
-  if (candidate) {
-    const components = candidate.split(".").map(Number);
-    const minimum = version.split(".").map(Number);
-    const differing = components.findIndex((component, index) => component !== minimum[index]);
-    const component = components[differing];
-    const minimumComponent = minimum[differing];
-    if (
-      components.every(Number.isSafeInteger) &&
-      component !== undefined &&
-      minimumComponent !== undefined &&
-      component > minimumComponent
-    ) {
-      version = candidate;
-    }
+  if (isClaudeCodeVersionAtLeast(candidate, version)) {
+    version = candidate!;
   }
   headers.set("user-agent", `claude-cli/${version}`);
   return { headers: headersToRecord(headers), version };
