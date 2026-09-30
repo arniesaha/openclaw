@@ -858,6 +858,7 @@ describe("prepareEmbeddedAttemptTransport", () => {
           modelId: model.id,
           provider: model.provider,
           runId: "run-session-key",
+          admittedRunContext,
           runtimePlan: {
             auth: { forwardedAuthProfileId: undefined },
             transport: { resolveExtraParams: () => ({}) },
