@@ -20,7 +20,8 @@ type EmbeddedStreamOptions = Parameters<StreamFn>[2] & {
 };
 
 // Fork carry (default off): when OPENCLAW_AGENTWEAVE_SESSION_KEY_HEADER === "1",
-// stamp the run's sessionKey onto outbound LLM requests as x-agentweave-session-key.
+// stamp the opaque AgentWeave session key (or legacy run sessionKey) onto outbound
+// LLM requests as x-agentweave-session-key.
 // The agentweave proxy joins this run's child LLM spans to the forced upstream
 // context keyed by that header (proxy _forced_session_contexts). Stock builds and
 // any other deployment leave the wire byte-for-byte unchanged.
@@ -32,12 +33,13 @@ export function withAgentweaveSessionKeyHeader(
   options: EmbeddedStreamOptions | undefined,
   sessionKey: string | undefined,
 ): EmbeddedStreamOptions | undefined {
-  if (!sessionKey || !agentweaveSessionKeyHeaderEnabled()) {
+  const headerValue = process.env.AGENTWEAVE_SESSION_KEY?.trim() || sessionKey;
+  if (!headerValue || !agentweaveSessionKeyHeaderEnabled()) {
     return options;
   }
   return {
     ...options,
-    headers: { ...options?.headers, "x-agentweave-session-key": sessionKey },
+    headers: { ...options?.headers, "x-agentweave-session-key": headerValue },
   };
 }
 

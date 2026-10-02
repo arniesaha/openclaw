@@ -4,7 +4,11 @@ import {
   emitInternalDiagnosticEvent as emitDiagnosticEvent,
   emitInternalDiagnosticEventWithPrivateData,
 } from "../infra/diagnostic-events.js";
-import { getDiagnosticSessionState, type SessionRef } from "./diagnostic-session-state.js";
+import {
+  getDiagnosticSessionState,
+  refreshDiagnosticSessionCorrelation,
+  type SessionRef,
+} from "./diagnostic-session-state.js";
 import { createSubsystemLogger } from "./subsystem.js";
 
 // Shared diagnostic logger and queue-activity event helpers.
@@ -44,6 +48,7 @@ export function logMessageQueuedWithBacklogPolicy(
     return;
   }
   const state = getDiagnosticSessionState(params);
+  refreshDiagnosticSessionCorrelation(params);
   if (countsTowardBacklog) {
     state.queueDepth += 1;
   }
@@ -67,14 +72,12 @@ export function logMessageQueuedWithBacklogPolicy(
     queueDepth: state.queueDepth,
     inputPreview: params.inputPreview,
   };
-  // clientContext rides the trusted privateData channel (onTrustedDiagnosticEvent),
-  // never the public payload — keeps the message.queued public contract unchanged.
-  // It lives here rather than in logMessageQueued because this helper owns both
-  // the backlog and the steering queue paths.
-  if (state.clientContext) {
-    emitInternalDiagnosticEventWithPrivateData(queuedEvent, {
-      clientContext: state.clientContext,
-    });
+  const privateData = {
+    ...(state.clientContext ? { clientContext: state.clientContext } : {}),
+    ...(state.sessionCorrelationId ? { sessionCorrelationId: state.sessionCorrelationId } : {}),
+  };
+  if (Object.keys(privateData).length > 0) {
+    emitInternalDiagnosticEventWithPrivateData(queuedEvent, privateData);
   } else {
     emitDiagnosticEvent(queuedEvent);
   }

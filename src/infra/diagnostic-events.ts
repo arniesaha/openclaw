@@ -948,6 +948,9 @@ export type DiagnosticEventPrivateData = Readonly<{
   // public listeners (it rides the trusted privateData channel, not the event
   // payload) so lifecycle events keep their queue/state-only public contract.
   clientContext?: DiagnosticClientContext;
+  // Opaque, session-derived audit pseudonym for trusted lifecycle listeners
+  // only. It is unavailable to public listeners and never part of event payloads.
+  sessionCorrelationId?: string;
 }>;
 
 type DiagnosticEventListener = (

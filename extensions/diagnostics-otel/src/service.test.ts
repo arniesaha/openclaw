@@ -498,6 +498,16 @@ function stringAttribute(attrs: Record<string, unknown> | undefined, key: string
   return value as string;
 }
 
+function expectNoRawDiagnosticIdentifiers(
+  attributes: Record<string, unknown> | undefined,
+  identifiers: readonly string[],
+) {
+  const serialized = JSON.stringify(attributes ?? {});
+  for (const identifier of identifiers) {
+    expect(serialized).not.toContain(identifier);
+  }
+}
+
 function firstSpanEndTime(name: string): unknown {
   return mockCallArg(spanByName(name).end, 0);
 }
@@ -6825,6 +6835,305 @@ describe("diagnostics-otel service", () => {
 
     const modelSpanAttrs = firstSpanAttributes("openclaw.model.call");
     expect(modelSpanAttrs["openclaw.client.agentId"]).toBe("Conductor");
+
+    await service.stop?.(ctx);
+  });
+
+  test("stamps an opaque session correlation from a lifecycle alias onto a model.call span", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    emitTrustedDiagnosticEventWithPrivateData(
+      {
+        type: "session.state",
+        sessionId: "sess-correlation-1",
+        sessionKey: "agent:main:sess-correlation-1",
+        state: "processing",
+      },
+      { sessionCorrelationId: "hmac-sha256:v1:key-id:opaque-digest" },
+    );
+    emitTrustedDiagnosticEventWithPrivateData(
+      {
+        type: "model.call.completed",
+        runId: "run-correlation-1",
+        callId: "call-correlation-1",
+        sessionKey: "agent:main:sess-correlation-1",
+        provider: "anthropic",
+        model: "claude-opus-4-6",
+        durationMs: 120,
+      },
+      {},
+    );
+    await flushDiagnosticEvents();
+
+    const modelSpanAttrs = firstSpanAttributes("openclaw.model.call");
+    expect(modelSpanAttrs["openclaw.session.correlation_id"]).toBe(
+      "hmac-sha256:v1:key-id:opaque-digest",
+    );
+    expect(modelSpanAttrs.sessionId).toBeUndefined();
+    expect(modelSpanAttrs.sessionKey).toBeUndefined();
+
+    await service.stop?.(ctx);
+  });
+
+  test("keeps session correlation on a tracked model.call span from start through completion", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    const session = {
+      sessionId: "sess-correlation-tracked",
+      sessionKey: "agent:main:sess-correlation-tracked",
+    };
+    const trace = createTestTrace(MODEL_CALL_SPAN_ID, CHILD_SPAN_ID);
+    const correlationId = "hmac-sha256:v1:key-id:tracked-digest";
+    emitTrustedDiagnosticEventWithPrivateData(
+      { type: "session.state", ...session, state: "processing" },
+      { sessionCorrelationId: correlationId },
+    );
+    emitTrustedDiagnosticEventWithPrivateData(
+      {
+        type: "model.call.started",
+        runId: "run-correlation-tracked",
+        callId: "call-correlation-tracked",
+        ...session,
+        provider: "anthropic",
+        model: "claude-opus-4-6",
+        trace,
+      },
+      {},
+    );
+    emitTrustedDiagnosticEventWithPrivateData(
+      {
+        type: "model.call.completed",
+        runId: "run-correlation-tracked",
+        callId: "call-correlation-tracked",
+        ...session,
+        provider: "anthropic",
+        model: "claude-opus-4-6",
+        durationMs: 120,
+        trace,
+      },
+      {},
+    );
+    await flushDiagnosticEvents();
+
+    expect(
+      startedSpanOptions("openclaw.model.call")?.attributes?.["openclaw.session.correlation_id"],
+    ).toBe(correlationId);
+    expect(firstSpanAttributes("openclaw.model.call")["openclaw.session.correlation_id"]).toBe(
+      correlationId,
+    );
+    expect(
+      telemetryState.tracer.startSpan.mock.calls.filter(
+        (call) => call[0] === "openclaw.model.call",
+      ),
+    ).toHaveLength(1);
+
+    await service.stop?.(ctx);
+  });
+
+  test("stamps session correlation on a model.call error span", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    const session = {
+      sessionId: "sess-correlation-error",
+      sessionKey: "agent:main:sess-correlation-error",
+    };
+    const correlationId = "hmac-sha256:v1:key-id:error-digest";
+    emitTrustedDiagnosticEventWithPrivateData(
+      { type: "message.queued", ...session, source: "diagnostics-test" },
+      { sessionCorrelationId: correlationId },
+    );
+    emitTrustedDiagnosticEventWithPrivateData(
+      {
+        type: "model.call.error",
+        runId: "run-correlation-error",
+        callId: "call-correlation-error",
+        ...session,
+        provider: "anthropic",
+        model: "claude-opus-4-6",
+        durationMs: 120,
+        errorCategory: "provider_error",
+      },
+      {},
+    );
+    await flushDiagnosticEvents();
+
+    expect(firstSpanAttributes("openclaw.model.call")["openclaw.session.correlation_id"]).toBe(
+      correlationId,
+    );
+
+    await service.stop?.(ctx);
+  });
+
+  test("does not stamp session correlation on semconv-opted-in model spans", async () => {
+    process.env.OTEL_SEMCONV_STABILITY_OPT_IN = "gen_ai_latest_experimental";
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    const session = {
+      sessionId: "sess-correlation-semconv",
+      sessionKey: "agent:main:sess-correlation-semconv",
+    };
+    emitTrustedDiagnosticEventWithPrivateData(
+      { type: "session.state", ...session, state: "processing" },
+      { sessionCorrelationId: "hmac-sha256:v1:key-id:semconv-digest" },
+    );
+    emitTrustedDiagnosticEventWithPrivateData(
+      {
+        type: "model.call.completed",
+        runId: "run-correlation-semconv",
+        callId: "call-correlation-semconv",
+        ...session,
+        provider: "openai",
+        model: "gpt-5.4",
+        api: "openai-completions",
+        durationMs: 120,
+      },
+      {},
+    );
+    await flushDiagnosticEvents();
+
+    expect(
+      firstSpanAttributes("text_completion gpt-5.4")["openclaw.session.correlation_id"],
+    ).toBeUndefined();
+
+    await service.stop?.(ctx);
+  });
+
+  test("does not project session correlation onto metrics, logs, model.usage spans, or resources", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true, logs: true });
+    await service.start(ctx);
+
+    const session = {
+      sessionId: "sess-correlation-nonprojection",
+      sessionKey: "agent:main:sess-correlation-nonprojection",
+    };
+    const correlationId = "hmac-sha256:v1:key-id:nonprojection-digest";
+    const rawIdentifiers = [
+      session.sessionId,
+      session.sessionKey,
+      "run-correlation-nonprojection",
+      "call-correlation-nonprojection",
+    ];
+    emitTrustedDiagnosticEventWithPrivateData(
+      { type: "session.state", ...session, state: "processing" },
+      { sessionCorrelationId: correlationId },
+    );
+    emitTrustedDiagnosticEventWithPrivateData(
+      {
+        type: "model.call.completed",
+        runId: "run-correlation-nonprojection",
+        callId: "call-correlation-nonprojection",
+        ...session,
+        provider: "anthropic",
+        model: "claude-opus-4-6",
+        durationMs: 120,
+      },
+      {},
+    );
+    emitTrustedDiagnosticEventWithPrivateData(
+      {
+        type: "model.usage",
+        ...session,
+        provider: "anthropic",
+        model: "claude-opus-4-6",
+        usage: { input: 3, output: 2, total: 5 },
+        durationMs: 10,
+      },
+      {},
+    );
+    emitTrustedDiagnosticEventWithPrivateData(
+      { type: "log.record", level: "INFO", message: "correlation isolation" },
+      {},
+    );
+    await flushDiagnosticEvents();
+
+    expect(
+      lastHistogramRecord("openclaw.model_call.duration_ms")?.[1]?.[
+        "openclaw.session.correlation_id"
+      ],
+    ).toBeUndefined();
+    expect(
+      lastHistogramRecord("gen_ai.client.operation.duration")?.[1]?.[
+        "openclaw.session.correlation_id"
+      ],
+    ).toBeUndefined();
+    expect(
+      startedSpanOptions("openclaw.model.usage")?.attributes?.["openclaw.session.correlation_id"],
+    ).toBeUndefined();
+    expect(logEmit).toHaveBeenCalled();
+    expect(
+      (mockCallArg(logEmit, 0) as { attributes?: Record<string, unknown> }).attributes?.[
+        "openclaw.session.correlation_id"
+      ],
+    ).toBeUndefined();
+    expect(
+      (mockCallArg(traceProviderCtor, 0) as { resource?: { attributes?: Record<string, unknown> } })
+        .resource?.attributes?.["openclaw.session.correlation_id"],
+    ).toBeUndefined();
+    expectNoRawDiagnosticIdentifiers(firstSpanAttributes("openclaw.model.call"), rawIdentifiers);
+    expectNoRawDiagnosticIdentifiers(
+      lastHistogramRecord("openclaw.model_call.duration_ms")?.[1],
+      rawIdentifiers,
+    );
+    expectNoRawDiagnosticIdentifiers(
+      lastHistogramRecord("gen_ai.client.operation.duration")?.[1],
+      rawIdentifiers,
+    );
+    expectNoRawDiagnosticIdentifiers(firstSpanAttributes("openclaw.model.usage"), rawIdentifiers);
+    expectNoRawDiagnosticIdentifiers(
+      (mockCallArg(logEmit, 0) as { attributes?: Record<string, unknown> }).attributes,
+      rawIdentifiers,
+    );
+    expectNoRawDiagnosticIdentifiers(
+      (mockCallArg(traceProviderCtor, 0) as { resource?: { attributes?: Record<string, unknown> } })
+        .resource?.attributes,
+      rawIdentifiers,
+    );
+
+    await service.stop?.(ctx);
+  });
+
+  test("clears a stale session correlation when a reused lifecycle alias carries none", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    const session = {
+      sessionId: "sess-correlation-reused",
+      sessionKey: "agent:main:sess-correlation-reused",
+    };
+    emitTrustedDiagnosticEventWithPrivateData(
+      { type: "session.state", ...session, state: "processing" },
+      { sessionCorrelationId: "hmac-sha256:v1:key-id:stale-digest" },
+    );
+    emitTrustedDiagnosticEventWithPrivateData(
+      { type: "message.queued", ...session, source: "diagnostics-test" },
+      {},
+    );
+    emitTrustedDiagnosticEventWithPrivateData(
+      {
+        type: "model.call.completed",
+        runId: "run-correlation-reused",
+        callId: "call-correlation-reused",
+        ...session,
+        provider: "anthropic",
+        model: "claude-opus-4-6",
+        durationMs: 120,
+      },
+      {},
+    );
+    await flushDiagnosticEvents();
+
+    const modelSpanAttrs = firstSpanAttributes("openclaw.model.call");
+    expect(modelSpanAttrs["openclaw.session.correlation_id"]).toBeUndefined();
 
     await service.stop?.(ctx);
   });
