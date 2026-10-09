@@ -16,7 +16,7 @@ import type { CronJob } from "../types.js";
 import type { DeferredCronNotifications } from "./state.js";
 import { runPostPersistCronNotifications } from "./store.js";
 import { runMissedJobs } from "./timer-catchup.js";
-import { applyJobResult } from "./timer-outcomes.js";
+import { applyJobResult, applyOutcomeToStoredJob } from "./timer-outcomes.js";
 import { onTimer } from "./timer.test-support.js";
 
 const timerRegressionFixtures = setupCronRegressionFixtures({
@@ -24,6 +24,55 @@ const timerRegressionFixtures = setupCronRegressionFixtures({
 });
 
 describe("cron timer outcome and failure policy regressions", () => {
+  it.each([
+    { deleteAfterRun: true, status: "ok" as const, expectedRemoved: true },
+    { deleteAfterRun: false, status: "ok" as const, expectedRemoved: false, enabled: false },
+    { deleteAfterRun: true, status: "error" as const, expectedRemoved: false, enabled: true },
+  ])(
+    "deletes a successful trigger-once recurring run only when deleteAfterRun is enabled ($status)",
+    ({ deleteAfterRun, status, expectedRemoved, enabled }) => {
+      const startedAt = Date.parse("2026-10-08T12:00:00.000Z");
+      const job = createIsolatedRegressionJob({
+        id: `trigger-once-delete-${status}-${deleteAfterRun}`,
+        name: "trigger-once cleanup",
+        scheduledAt: startedAt,
+        schedule: { kind: "every", everyMs: 60_000, anchorMs: startedAt },
+        payload: { kind: "agentTurn", message: "cleanup" },
+        state: { nextRunAtMs: startedAt },
+      });
+      job.trigger = { script: "json({ fire: true })", once: true };
+      job.deleteAfterRun = deleteAfterRun;
+      const state = createCronServiceState({
+        storePath: "/tmp/cron-trigger-once-delete.json",
+        nowMs: () => startedAt,
+        runIsolatedAgentJob: createDefaultIsolatedRunner(),
+      });
+      state.store = { version: 1, jobs: [job] };
+
+      const removed = applyOutcomeToStoredJob(
+        state,
+        {
+          jobId: job.id,
+          job: structuredClone(job),
+          status,
+          ...(status === "error" ? { error: "synthetic failure" } : {}),
+          startedAt,
+          endedAt: startedAt + 1,
+          triggerEval: { fired: true, stateChanged: false },
+        },
+        { deferredNotifications: [] },
+      );
+
+      expect(removed !== undefined).toBe(expectedRemoved);
+      if (expectedRemoved) {
+        expect(state.store.jobs).toEqual([]);
+      } else {
+        expect(state.store.jobs).toHaveLength(1);
+        expect(state.store.jobs[0]).toMatchObject({ enabled });
+      }
+    },
+  );
+
   it("preserves every cadence after a transient recurring retry succeeds", () => {
     const scheduledAt = Date.parse("2026-05-29T02:28:00.000Z");
     const everyTwelveHoursMs = 12 * 60 * 60 * 1_000;

@@ -94,6 +94,8 @@ export function applyJobResult(
     // Startup recovery restores historical notification facts separately.
     replay?: boolean;
     replaySchedule?: { nextRunAtMs?: number };
+    // Trigger edits own whether a fired once trigger can retire the job.
+    triggerOnceTerminalRun?: boolean;
     deferredNotifications: DeferredCronNotifications;
   },
 ): boolean {
@@ -219,10 +221,11 @@ export function applyJobResult(
     opts.scheduleMode === "preserve" && oneShotOccurrenceAtMs !== undefined;
   const ownsSchedule = opts.scheduleOwnership !== "stale";
   const isOneShotSchedule = job.schedule.kind === "at" || job.schedule.kind === "on-exit";
+  const isTriggerOnceTerminalRun = opts.triggerOnceTerminalRun === true;
   // Authored completion includes intentional silence and the admitted best-effort policy.
   const shouldDelete =
     ownsSchedule &&
-    isOneShotSchedule &&
+    (isOneShotSchedule || isTriggerOnceTerminalRun) &&
     !preserveOneShotSchedule &&
     job.deleteAfterRun === true &&
     completionStatus === "succeeded";
@@ -704,6 +707,10 @@ export function applyOutcomeToAuthoritativeJob(
       opts.request?.preserveCadence && scheduleOwnership === "current" ? "preserve" : "advance",
     scheduleOwnership,
     scheduleOwnershipAtMs: opts.request?.scheduleOwnershipAtMs,
+    triggerOnceTerminalRun:
+      triggerOwnership === "current" &&
+      job.trigger?.once === true &&
+      result.triggerEval?.fired === true,
     deferredNotifications: opts.deferredNotifications,
   });
   applyTriggerRunResult(job, result, { scheduleOwnership, triggerOwnership });
