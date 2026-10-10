@@ -55,7 +55,7 @@ describe("cron timer outcome and failure policy regressions", () => {
           jobId: job.id,
           job: structuredClone(job),
           status,
-          ...(status === "error" ? { error: "synthetic failure" } : {}),
+          ...(status === "error" ? { error: "synthetic failure" } : { delivered: true }),
           startedAt,
           endedAt: startedAt + 1,
           triggerEval: { fired: true, stateChanged: false },
