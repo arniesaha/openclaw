@@ -810,7 +810,7 @@ describe("compactEmbeddedAgentSessionDirect hooks", () => {
       signal: new AbortController().signal,
       effectiveModel: { provider: "openai", id: "fake", api: "responses", input: [] } as never,
       resolvedApiKey: undefined,
-      authStorage: { setRuntimeApiKey: vi.fn() },
+      authStorage: { setRuntimeApiKey: vi.fn(), getApiKey: vi.fn(async () => undefined) },
       config: undefined,
       provider: "openai",
       modelId: "gpt-5.4",
