@@ -30,7 +30,7 @@ describe("cron timer outcome and failure policy regressions", () => {
     { deleteAfterRun: true, status: "error" as const, expectedRemoved: false, enabled: true },
   ])(
     "deletes a successful trigger-once recurring run only when deleteAfterRun is enabled ($status)",
-    ({ deleteAfterRun, status, expectedRemoved, enabled }) => {
+    async ({ deleteAfterRun, status, expectedRemoved, enabled }) => {
       const startedAt = Date.parse("2026-10-08T12:00:00.000Z");
       const job = createIsolatedRegressionJob({
         id: `trigger-once-delete-${status}-${deleteAfterRun}`,
@@ -49,7 +49,7 @@ describe("cron timer outcome and failure policy regressions", () => {
       });
       state.store = { version: 1, jobs: [job] };
 
-      const removed = applyOutcomeToStoredJob(
+      const removed = await applyOutcomeToStoredJob(
         state,
         {
           jobId: job.id,
