@@ -19,7 +19,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 BASE=".fork-upgrade-gates/compact-hooks-upstream-baseline.txt"
-FINAL="v2026.9.2"
+FINAL="v2026.9.9"
 OUT="$(mktemp)"; trap 'rm -f "$OUT" "$OUT.f"' EXIT
 
 pnpm test src/agents/embedded-agent-runner/stream-resolution.test.ts \

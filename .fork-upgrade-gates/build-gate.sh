@@ -15,7 +15,7 @@
 # partway.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-FINAL="v2026.9.2"
+FINAL="v2026.9.9"
 if ! git rev-parse -q --verify "refs/tags/$FINAL" >/dev/null; then
   echo "[build-gate] FAILED: tag $FINAL not found; cannot tell which hop this is"; exit 1
 fi
