@@ -161,8 +161,9 @@ export function collectRegistryInvocationInstances(
     }
   };
   for (const key of pluginArrays) {
-    const entries = registry[key];
-    for (const entry of key === "tools" ? entries.filter(({ optional }) => !optional) : entries) {
+    const entries: readonly unknown[] =
+      key === "tools" ? registry.tools.filter(({ optional }) => !optional) : registry[key];
+    for (const entry of entries) {
       collect(entry);
     }
   }
