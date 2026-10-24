@@ -8,6 +8,7 @@ import {
   type PluginInvocationBinding,
 } from "./plugin-instance-scope.js";
 import type { PluginInstanceConsumer } from "./plugin-instance.types.js";
+import { pluginArrays, pluginMaps } from "./registry-empty.js";
 import type { PluginRegistry } from "./registry-types.js";
 
 /** Finite execution custody for one host-selected registry and its exact instances. */
@@ -132,38 +133,64 @@ export function collectRegistryInvocationInstances(
   registry: PluginRegistry,
 ): Set<PluginInstanceHandle> {
   const instances = new Set<PluginInstanceHandle>();
-  for (const record of registry.plugins) {
-    const instance = getPluginInstance(record);
+  // A registry record is physical custody, not proof that this finite agent turn
+  // captured executable plugin behavior. Retaining every loaded record turns an
+  // optional, context-gated tool into reload-blocking work for unrelated turns.
+  // Every other registered contribution can escape its registry view, so retain
+  // its exact owner. Optional tools acquire normal call admission only when
+  // they are actually invoked.
+  const records = new Map(registry.plugins.map((record) => [record.id, record]));
+  const collect = (value: unknown, ownerPluginId?: string) => {
+    if (!value || (typeof value !== "object" && typeof value !== "function")) {
+      return;
+    }
+    const instance =
+      getPluginValueInstance(value) ??
+      getPluginInstance(value as import("./registry-types.js").PluginRecord);
     if (instance) {
       instances.add(instance);
+      return;
+    }
+    const pluginId =
+      ownerPluginId ??
+      ("pluginId" in value && typeof value.pluginId === "string" ? value.pluginId : undefined);
+    const record = pluginId && records.get(pluginId);
+    const recordInstance = record && getPluginInstance(record);
+    if (recordInstance) {
+      instances.add(recordInstance);
+    }
+  };
+  for (const key of pluginArrays) {
+    const entries = registry[key];
+    for (const entry of key === "tools" ? entries.filter(({ optional }) => !optional) : entries) {
+      collect(entry);
     }
   }
-  for (const { host } of registry.decisionProviders) {
-    const instance = getPluginInstance(host.record);
-    if (instance) {
-      instances.add(instance);
+  for (const key of pluginMaps) {
+    for (const entry of registry[key].values()) {
+      collect(entry);
     }
+  }
+  for (const entry of registry.contextEngines.values()) {
+    collect(
+      entry,
+      entry.owner.startsWith("plugin:") ? entry.owner.slice("plugin:".length) : undefined,
+    );
+  }
+  for (const entry of registry.compactionProviders) {
+    collect(entry, entry.ownerPluginId);
+  }
+  for (const entry of registry.gatewayMethodDescriptors) {
+    collect(entry, entry.owner.kind === "plugin" ? entry.owner.pluginId : undefined);
+  }
+  for (const entry of registry.httpRoutes) {
+    collect(entry);
   }
   for (const entry of registry.channels) {
-    const instance = entry.borrowedRuntimeRecord && getPluginInstance(entry.borrowedRuntimeRecord);
-    if (instance) {
-      instances.add(instance);
-    }
+    collect(entry.borrowedRuntimeRecord);
   }
-  const values = [
-    ...registry.tools.map(({ factory }) => factory),
-    ...registry.channels.map(({ plugin }) => plugin),
-    ...[...registry.contextEngines.values()].map(({ factory }) => factory),
-    ...registry.widgetPresenters.map(({ presenter }) => presenter),
-    ...registry.memoryCorpusSupplements.map(({ supplement }) => supplement),
-    ...registry.memoryPromptPreparations.map(({ prepare }) => prepare),
-    ...registry.memoryPromptSupplements.map(({ builder }) => builder),
-  ];
-  for (const value of values) {
-    const instance = getPluginValueInstance(value);
-    if (instance) {
-      instances.add(instance);
-    }
+  for (const { host } of registry.decisionProviders) {
+    collect(host.record);
   }
   return instances;
 }
