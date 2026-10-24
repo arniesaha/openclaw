@@ -34,7 +34,18 @@ When changing Node, update `ExecStart` **and** `Environment=PATH` in `~/.config/
 
 Restarting the gateway interrupts any active Nix session and any Telegram bot loop. Don't restart casually — ask first unless the user explicitly told you to.
 
-### Current state (2026-10-09): upgraded to v2026.9.9
+**Don't use `/update` on this checkout.** The dev channel has no target of its own: with no explicit target it updates to `DEV_BRANCH = "main"` (`src/infra/update-channels.ts`), and this fork's `origin/main` is an old 2026.6.2 commit (`2abeda33ab2`). Run `1e91a929…` (2026-10-24) did exactly that and was refused at `database-schema-preflight` ("schema 19; target supports 1": 2abeda33 declares no `openclaw.schemaVersions`, which reads as schema 1). It also builds on the NAS, which can't build this release. Deploy with the Mac Studio path below.
+
+**Vitest passing doesn't mean it builds.** Vitest doesn't type-check and this fork has no whole-repo typecheck gate, so a reviewed PR with green focused tests can still fail `pnpm build` in the declaration step (#14 did; #15 fixed it). The Mac `pnpm build` is the type gate — run it before calling a change deployable.
+
+**Swap order: stop, swap, start.** Lazily-loaded chunks have hashed names. Swapping the build dirs while the old process is still running, then `restart`, makes its shutdown hooks fail with `Cannot find module …/dist/…` (transcript-capture shutdown, 2026-10-24). Stage into `<dir>.new` beside each live dir (same depth keeps relative plugin links valid), then `systemctl --user stop`, rename `<dir>`→`<dir>.old` and `<dir>.new`→`<dir>` for all 19, `systemctl --user start`. The NVMe drop-in's `ExecStartPre` can hold startup for up to 16 min; `ready` took ~85 s on 2026-10-24.
+
+### Current state (2026-10-24): v2026.9.9 + optional-tool drain fix
+
+- Serving **`39dc39b5091`** on `upgrade/v2026.9.9` (#14 drain-admission fix, plus #15's type fix on top). Build ID `2026.9.9-39dc39b50915-2026-10-24T17-18-52.680Z`; restarted 2026-10-24 10:30 PDT. Schemas unchanged (state 19 / agent 24), no migration.
+- Rollback: `~/openclaw-dist-157d653-20261024-101447/` (all 19 dirs of the previous build), plus `<dir>.old` in the checkout. Code-only rollback is schema-safe for this hop. Failed `/update` evidence: `~/openclaw-update-evidence-1e91a929/`.
+
+### Previous state (2026-10-09): upgraded to v2026.9.9
 
 - Deploy tracks branch **`upgrade/v2026.9.9`** (`4ff128d8621`, pushed to `origin`): the 38 carries from `upgrade/v2026.9.6-verified-20260929` rebased through `v2026.9.7 → v2026.9.8 → v2026.9.9` (hop branches kept), plus three fork commits — the gate retarget and two fixes to the carried compaction test. App version `2026.9.9`.
 - **Gates actually run:** the nine carry-targeted Vitest gates at v2026.9.9 only. `tsgo:core` was skipped (35+ min under `heavy`) — this deploy has no whole-repo typecheck.
