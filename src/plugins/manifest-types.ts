@@ -578,6 +578,8 @@ export type PluginManifestContracts = {
   usageProviders?: string[];
   migrationProviders?: string[];
   gatewayMethodDispatch?: string[];
+  /** Entitlement to wake an existing, non-ended subagent session; accepts "live-subagent-session". */
+  heartbeatOwnerWake?: string[];
   tools?: string[];
 };
 

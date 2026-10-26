@@ -22,6 +22,15 @@ type RuntimeRequestHeartbeatOptions = Parameters<
 type RuntimeRequestHeartbeatNowOptions = Omit<RuntimeRequestHeartbeatOptions, "source" | "intent"> &
   Partial<Pick<RuntimeRequestHeartbeatOptions, "source" | "intent">>;
 
+export type RequestLiveSubagentOwnerWakeOptions = {
+  /** Existing subagent session key (`agent:<id>:subagent:...`) owned by the caller. */
+  sessionKey: string;
+};
+
+export type RequestLiveSubagentOwnerWakeResult =
+  | { ok: true }
+  | { ok: false; reason: "not-a-subagent-session-key" | "session-not-found" | "session-ended" };
+
 type RuntimeWriteConfigOptions = {
   /** Revalidate caller authority at guarded publication; accepted writes still settle. */
   assertCurrent?: () => void;
@@ -435,6 +444,14 @@ export type PluginRuntimeCore = {
      * scheduler intent explicitly.
      */
     requestHeartbeatNow: (opts?: RuntimeRequestHeartbeatNowOptions) => void;
+    /**
+     * Wake an existing, non-ended subagent session with an internal-only heartbeat turn.
+     * Requires `contracts.heartbeatOwnerWake: ["live-subagent-session"]` in the plugin
+     * manifest. Never creates a session or wakes an ended one.
+     */
+    requestLiveSubagentOwnerWake: (
+      opts: RequestLiveSubagentOwnerWakeOptions,
+    ) => RequestLiveSubagentOwnerWakeResult;
     /**
      * Run a single heartbeat cycle immediately (bypassing the coalesce timer).
      * Accepts an optional `heartbeat` config override so callers can choose

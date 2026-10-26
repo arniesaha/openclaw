@@ -32,6 +32,11 @@ export function createRuntimeSystem(): PluginRuntime["system"] {
     enqueueSystemEvent: enqueueSystemEventFromSdk,
     requestHeartbeat,
     requestHeartbeatNow,
+    // Deny by default: only the per-plugin facade in registry-runtime, which checks the
+    // manifest contract, supplies the real implementation.
+    requestLiveSubagentOwnerWake: () => {
+      throw new Error("requestLiveSubagentOwnerWake requires a contract-gated plugin runtime.");
+    },
     runHeartbeatOnce: (opts?: RunHeartbeatOnceOptions) => {
       // Destructure to forward only the plugin-safe subset; prevent cfg/deps injection at runtime.
       const { reason, agentId, sessionKey, heartbeat } = opts ?? {};
