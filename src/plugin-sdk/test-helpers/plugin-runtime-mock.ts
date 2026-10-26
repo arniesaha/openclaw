@@ -636,6 +636,8 @@ export function createPluginRuntimeMock(overrides: PluginRuntimeMockOverrides = 
       enqueueSystemEvent: vi.fn<PluginRuntime["system"]["enqueueSystemEvent"]>(),
       requestHeartbeat: vi.fn<PluginRuntime["system"]["requestHeartbeat"]>(),
       requestHeartbeatNow: vi.fn<PluginRuntime["system"]["requestHeartbeatNow"]>(),
+      requestLiveSubagentOwnerWake:
+        vi.fn<PluginRuntime["system"]["requestLiveSubagentOwnerWake"]>(),
       runHeartbeatOnce: vi.fn<PluginRuntime["system"]["runHeartbeatOnce"]>(async () => ({
         status: "ran" as const,
         durationMs: 0,
