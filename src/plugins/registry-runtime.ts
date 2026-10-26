@@ -33,6 +33,10 @@ import {
   getPluginRuntimeGatewayRequestScope,
   withPluginRuntimePluginScope,
 } from "./runtime/gateway-request-scope.js";
+import {
+  LIVE_SUBAGENT_OWNER_WAKE_CONTRACT,
+  requestLiveSubagentOwnerWakeForPlugin,
+} from "./runtime/owner-wake.js";
 import type { PluginRuntime } from "./runtime/types.js";
 
 export function createPluginRuntimeResolver(state: PluginRegistryState) {
@@ -333,6 +337,19 @@ export function createPluginRuntimeResolver(state: PluginRegistryState) {
             enqueueSystemEvent: (...args) => route(() => system.enqueueSystemEvent(...args)),
             requestHeartbeat: (...args) => route(() => system.requestHeartbeat(...args)),
             requestHeartbeatNow: (...args) => route(() => system.requestHeartbeatNow(...args)),
+            requestLiveSubagentOwnerWake: (opts) =>
+              route(() => {
+                if (
+                  !(record.contracts?.heartbeatOwnerWake ?? []).includes(
+                    LIVE_SUBAGENT_OWNER_WAKE_CONTRACT,
+                  )
+                ) {
+                  throw new Error(
+                    `Plugin "${pluginId}" must declare contracts.heartbeatOwnerWake: ["${LIVE_SUBAGENT_OWNER_WAKE_CONTRACT}"] to wake subagent sessions.`,
+                  );
+                }
+                return requestLiveSubagentOwnerWakeForPlugin(pluginId, opts);
+              }),
             runHeartbeatOnce: (...args) => route(() => system.runHeartbeatOnce(...args)),
             runCommandWithTimeout: (...args) =>
               runWithPluginScope(() => system.runCommandWithTimeout(...args)),

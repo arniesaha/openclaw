@@ -37,7 +37,8 @@ export type PluginManifestContractListKey =
   | "workerProviders"
   | "usageProviders"
   | "migrationProviders"
-  | "gatewayMethodDispatch";
+  | "gatewayMethodDispatch"
+  | "heartbeatOwnerWake";
 
 type PluginManifestRecordStatic = Omit<
   PluginManifest,

@@ -14,6 +14,10 @@ import {
 } from "../routing/session-key.js";
 import { resolveMainScopedEventSessionKey } from "./event-session-routing.js";
 import type { HeartbeatConfig } from "./heartbeat-config.js";
+import {
+  hasLiveSubagentOwnerWakeGrant,
+  isLiveSubagentSession,
+} from "./heartbeat-owner-wake-grants.js";
 
 export function resolveHeartbeatSessionKey(
   cfg: OpenClawConfig,
@@ -65,8 +69,20 @@ export function resolveHeartbeatSessionKey(
   };
 
   // Guard: never route heartbeats to subagent sessions, regardless of entry path.
+  // The only exception is a contract-gated plugin owner wake (see
+  // heartbeat-owner-wake-grants) aimed at an existing, live subagent of this agent.
   const forced = forcedSessionKey?.trim();
   if (forced && isSubagentSessionKey(forced)) {
+    if (
+      hasLiveSubagentOwnerWakeGrant(forced) &&
+      resolveAgentIdFromSessionKey(forced) === resolvedAgentId &&
+      isLiveSubagentSession(
+        forced,
+        loadSessionEntry({ agentId: resolvedAgentId, storePath, sessionKey: forced, env }),
+      )
+    ) {
+      return { sessionKey: forced, storePath, suppressOriginatingContext: true };
+    }
     return mainSession(true);
   }
 

@@ -30,7 +30,11 @@ import {
 import { resolveCronSession } from "../cron/isolated-agent/session.js";
 import { getQueueSize, isCommandLaneTaskMarkerCurrent } from "../process/command-queue.js";
 import { CommandLane } from "../process/lanes.js";
-import { normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.js";
+import {
+  isSubagentSessionKey,
+  normalizeAgentId,
+  parseAgentSessionKey,
+} from "../routing/session-key.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { isCronRunSessionKey } from "../sessions/session-key-utils.js";
 import { getAgentEventLifecycleGeneration } from "./agent-events.js";
@@ -41,6 +45,10 @@ import { resolveHeartbeatForWake, type HeartbeatConfig } from "./heartbeat-confi
 import { isExecCompletionEvent } from "./heartbeat-events-filter.js";
 import { emitHeartbeatEvent } from "./heartbeat-events.js";
 import { heartbeatLog as log } from "./heartbeat-log.js";
+import {
+  hasLiveSubagentOwnerWakeGrant,
+  OWNER_WAKE_REASON_PREFIX,
+} from "./heartbeat-owner-wake-grants.js";
 import { shouldUseHeartbeatResponseToolPrompt } from "./heartbeat-runner-config.js";
 import {
   resolveHeartbeatPreflight,
@@ -137,12 +145,25 @@ export async function resolveHeartbeatWakeStage(opts: HeartbeatRunOptions) {
   }
   const agentId = normalizeAgentId(resolvedAgentId);
   const wakeSource = opts.source ?? inferHeartbeatWakeSourceFromReason(opts.reason);
-  const heartbeat = resolveHeartbeatForWake({
+  const wakeHeartbeat = resolveHeartbeatForWake({
     cfg,
     agentId,
     requestedHeartbeat: opts.heartbeat,
     source: wakeSource,
   });
+  // A granted subagent owner wake is internal-only: whoever shares the grant window or
+  // merges into the wake cannot add delivery or an isolated (new) session row.
+  const forcedSubagentKey = opts.sessionKey?.trim();
+  const targetsSubagent = forcedSubagentKey ? isSubagentSessionKey(forcedSubagentKey) : false;
+  const ownerWakeGranted =
+    targetsSubagent && forcedSubagentKey ? hasLiveSubagentOwnerWakeGrant(forcedSubagentKey) : false;
+  if (targetsSubagent && !ownerWakeGranted && opts.reason?.startsWith(OWNER_WAKE_REASON_PREFIX)) {
+    // A retry that outlived its grant must not reroute to the main session.
+    return { kind: "skipped", reason: "owner-wake-expired" } as const;
+  }
+  const heartbeat: HeartbeatConfig = ownerWakeGranted
+    ? { ...wakeHeartbeat, target: "none", isolatedSession: false }
+    : wakeHeartbeat;
   const scheduledTasks = [...(opts.tasks ?? [])].toSorted((left, right) =>
     left.jobId.localeCompare(right.jobId),
   );
@@ -320,6 +341,14 @@ export async function resolveHeartbeatWakeStage(opts: HeartbeatRunOptions) {
     return skippedHeartbeatStage(preflight.skipReason, startedAt);
   }
   const { sessionKey } = preflight.session;
+  if (
+    targetsSubagent &&
+    opts.reason?.startsWith(OWNER_WAKE_REASON_PREFIX) &&
+    sessionKey !== forcedSubagentKey?.toLowerCase()
+  ) {
+    // The owner stopped being live inside the grant window; never turn it into a main-session run.
+    return skippedHeartbeatStage("owner-wake-not-live", startedAt);
+  }
   const isReplyRunActive =
     opts.deps?.isReplyRunActive ?? ((key: string) => replyRunRegistry.isActive(key));
   // Keep injected lists authoritative; production checks the current indexed owner at each fence.
