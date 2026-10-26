@@ -14,7 +14,10 @@ import {
 } from "./heartbeat-owner-wake-grants.js";
 import { resolveHeartbeatSessionKey } from "./heartbeat-runner-session.js";
 import { runHeartbeatOnce } from "./heartbeat-runner.js";
+import { installHeartbeatRunnerTestRuntime } from "./heartbeat-runner.test-harness.js";
 import { seedSessionStore, withTempHeartbeatSandbox } from "./heartbeat-runner.test-utils.js";
+
+installHeartbeatRunnerTestRuntime();
 
 const OWNER = "agent:coder:subagent:owner-1";
 const seed = { lastChannel: "telegram", lastProvider: "telegram", lastTo: "1" };
@@ -108,6 +111,29 @@ describe("runHeartbeatOnce subagent owner wake", () => {
         reason: "hook:plugin-owner-wake:p",
       });
       expect(result).toMatchObject({ status: "skipped", reason: "owner-wake-expired" });
+    });
+  });
+
+  it("skips an owner wake whose subagent is no longer live inside the grant window", async () => {
+    await withTempHeartbeatSandbox(async ({ tmpDir, storePath }) => {
+      const cfg: OpenClawConfig = {
+        agents: {
+          defaults: { workspace: tmpDir, heartbeat: { every: "5m" } },
+          list: [{ id: "coder", default: true }],
+        },
+        session: { store: storePath },
+      };
+      await seedSessionStore(storePath, OWNER, { ...seed, endedAt: 1, status: "done" });
+      grantLiveSubagentOwnerWake({ pluginId: "p", sessionKey: OWNER });
+      const result = await runHeartbeatOnce({
+        cfg,
+        agentId: "coder",
+        sessionKey: OWNER,
+        source: "hook",
+        intent: "immediate",
+        reason: "hook:plugin-owner-wake:p",
+      });
+      expect(result).toMatchObject({ status: "skipped", reason: "owner-wake-not-live" });
     });
   });
 });

@@ -341,6 +341,14 @@ export async function resolveHeartbeatWakeStage(opts: HeartbeatRunOptions) {
     return skippedHeartbeatStage(preflight.skipReason, startedAt);
   }
   const { sessionKey } = preflight.session;
+  if (
+    targetsSubagent &&
+    opts.reason?.startsWith(OWNER_WAKE_REASON_PREFIX) &&
+    sessionKey !== forcedSubagentKey?.toLowerCase()
+  ) {
+    // The owner stopped being live inside the grant window; never turn it into a main-session run.
+    return skippedHeartbeatStage("owner-wake-not-live", startedAt);
+  }
   const isReplyRunActive =
     opts.deps?.isReplyRunActive ?? ((key: string) => replyRunRegistry.isActive(key));
   // Keep injected lists authoritative; production checks the current indexed owner at each fence.
