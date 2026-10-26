@@ -4,6 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   requestHeartbeat: vi.fn(),
   loadSessionEntry: vi.fn(),
+  isActive: vi.fn(),
+}));
+vi.mock("../../agents/subagents/registry/subagent-registry-read.js", () => ({
+  isSubagentSessionRunActive: mocks.isActive,
 }));
 vi.mock("../../infra/heartbeat-wake.js", () => ({ requestHeartbeat: mocks.requestHeartbeat }));
 vi.mock("../../config/sessions/session-accessor.js", () => ({
@@ -22,6 +26,7 @@ const KEY = "agent:coder:subagent:a";
 beforeEach(() => {
   mocks.requestHeartbeat.mockReset();
   mocks.loadSessionEntry.mockReset();
+  mocks.isActive.mockReset();
   resetLiveSubagentOwnerWakeGrantsForTest();
 });
 
@@ -45,7 +50,8 @@ describe("requestLiveSubagentOwnerWakeForPlugin", () => {
   });
 
   it("refuses an ended session", () => {
-    mocks.loadSessionEntry.mockReturnValue({ endedAt: 5, status: "done" });
+    mocks.loadSessionEntry.mockReturnValue({ sessionId: "s", endedAt: 5, status: "done" });
+    mocks.isActive.mockReturnValue(false);
     expect(requestLiveSubagentOwnerWakeForPlugin("p", { sessionKey: KEY })).toEqual({
       ok: false,
       reason: "session-ended",
@@ -54,7 +60,8 @@ describe("requestLiveSubagentOwnerWakeForPlugin", () => {
   });
 
   it("grants and wakes a live session internally", () => {
-    mocks.loadSessionEntry.mockReturnValue({ status: "running" });
+    mocks.loadSessionEntry.mockReturnValue({ sessionId: "s", status: "running" });
+    mocks.isActive.mockReturnValue(true);
     expect(requestLiveSubagentOwnerWakeForPlugin("p", { sessionKey: KEY })).toEqual({ ok: true });
     expect(hasLiveSubagentOwnerWakeGrant(KEY)).toBe(true);
     expect(mocks.requestHeartbeat).toHaveBeenCalledWith({

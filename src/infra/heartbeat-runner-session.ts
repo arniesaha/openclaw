@@ -16,7 +16,7 @@ import { resolveMainScopedEventSessionKey } from "./event-session-routing.js";
 import type { HeartbeatConfig } from "./heartbeat-config.js";
 import {
   hasLiveSubagentOwnerWakeGrant,
-  isLiveSubagentSessionEntry,
+  isLiveSubagentSession,
 } from "./heartbeat-owner-wake-grants.js";
 
 export function resolveHeartbeatSessionKey(
@@ -76,7 +76,8 @@ export function resolveHeartbeatSessionKey(
     if (
       hasLiveSubagentOwnerWakeGrant(forced) &&
       resolveAgentIdFromSessionKey(forced) === resolvedAgentId &&
-      isLiveSubagentSessionEntry(
+      isLiveSubagentSession(
+        forced,
         loadSessionEntry({ agentId: resolvedAgentId, storePath, sessionKey: forced, env }),
       )
     ) {

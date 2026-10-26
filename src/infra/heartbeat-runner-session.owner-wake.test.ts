@@ -1,5 +1,11 @@
 // Tests that subagent heartbeat routing opens only for a granted, live, same-agent owner.
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const registry = vi.hoisted(() => ({ active: new Set<string>() }));
+vi.mock("../agents/subagents/registry/subagent-registry-read.js", () => ({
+  isSubagentSessionRunActive: (key: string) => registry.active.has(key),
+}));
+
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {
   grantLiveSubagentOwnerWake,
@@ -7,12 +13,14 @@ import {
   revokeLiveSubagentOwnerWake,
 } from "./heartbeat-owner-wake-grants.js";
 import { resolveHeartbeatSessionKey } from "./heartbeat-runner-session.js";
+import { runHeartbeatOnce } from "./heartbeat-runner.js";
 import { seedSessionStore, withTempHeartbeatSandbox } from "./heartbeat-runner.test-utils.js";
 
 const OWNER = "agent:coder:subagent:owner-1";
 const seed = { lastChannel: "telegram", lastProvider: "telegram", lastTo: "1" };
 
 afterEach(() => {
+  registry.active.clear();
   resetLiveSubagentOwnerWakeGrantsForTest();
 });
 
@@ -31,6 +39,7 @@ describe("resolveHeartbeatSessionKey subagent owner wake", () => {
   it("routes a granted live subagent owner", async () => {
     await withTempHeartbeatSandbox(async ({ storePath }) => {
       await seedSessionStore(storePath, OWNER, seed);
+      registry.active.add(OWNER);
       grantLiveSubagentOwnerWake({ pluginId: "p", sessionKey: OWNER });
       const resolved = resolveHeartbeatSessionKey(cfgFor(storePath), "coder", undefined, OWNER);
       expect(resolved.sessionKey).toBe(OWNER);
@@ -46,12 +55,9 @@ describe("resolveHeartbeatSessionKey subagent owner wake", () => {
     });
   });
 
-  it.each([
-    { name: "endedAt set", entry: { endedAt: 1 } },
-    { name: "terminal status", entry: { status: "done" as const } },
-  ])("falls back to main for an ended session ($name)", async ({ entry }) => {
+  it("falls back to main when the registry no longer has a live run", async () => {
     await withTempHeartbeatSandbox(async ({ storePath }) => {
-      await seedSessionStore(storePath, OWNER, { ...seed, ...entry });
+      await seedSessionStore(storePath, OWNER, { ...seed, endedAt: 1, status: "done" });
       grantLiveSubagentOwnerWake({ pluginId: "p", sessionKey: OWNER });
       const resolved = resolveHeartbeatSessionKey(cfgFor(storePath), "coder", undefined, OWNER);
       expect(resolved.sessionKey).toBe(mainKey);
@@ -62,6 +68,7 @@ describe("resolveHeartbeatSessionKey subagent owner wake", () => {
     await withTempHeartbeatSandbox(async ({ storePath }) => {
       const foreign = "agent:other:subagent:x";
       await seedSessionStore(storePath, foreign, seed);
+      registry.active.add(foreign);
       grantLiveSubagentOwnerWake({ pluginId: "p", sessionKey: foreign });
       const resolved = resolveHeartbeatSessionKey(cfgFor(storePath), "coder", undefined, foreign);
       expect(resolved.sessionKey).toBe(mainKey);
@@ -71,6 +78,7 @@ describe("resolveHeartbeatSessionKey subagent owner wake", () => {
   it("falls back to main after the grant is revoked or expires", async () => {
     await withTempHeartbeatSandbox(async ({ storePath }) => {
       await seedSessionStore(storePath, OWNER, seed);
+      registry.active.add(OWNER);
       grantLiveSubagentOwnerWake({ pluginId: "p", sessionKey: OWNER, now: 0 });
       expect(
         resolveHeartbeatSessionKey(cfgFor(storePath), "coder", undefined, OWNER).sessionKey,
@@ -80,6 +88,26 @@ describe("resolveHeartbeatSessionKey subagent owner wake", () => {
       expect(
         resolveHeartbeatSessionKey(cfgFor(storePath), "coder", undefined, OWNER).sessionKey,
       ).toBe(mainKey);
+    });
+  });
+});
+
+describe("runHeartbeatOnce subagent owner wake", () => {
+  it("skips an owner wake retry whose grant expired instead of rerouting to main", async () => {
+    await withTempHeartbeatSandbox(async ({ tmpDir, storePath }) => {
+      const cfg: OpenClawConfig = {
+        agents: { defaults: { workspace: tmpDir, heartbeat: { every: "5m" } } },
+        session: { store: storePath },
+      };
+      const result = await runHeartbeatOnce({
+        cfg,
+        agentId: "coder",
+        sessionKey: OWNER,
+        source: "hook",
+        intent: "immediate",
+        reason: "hook:plugin-owner-wake:p",
+      });
+      expect(result).toMatchObject({ status: "skipped", reason: "owner-wake-expired" });
     });
   });
 });

@@ -4,7 +4,8 @@ import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
 import { loadSessionEntry } from "../../config/sessions/session-accessor.js";
 import {
   grantLiveSubagentOwnerWake,
-  isLiveSubagentSessionEntry,
+  isLiveSubagentSession,
+  OWNER_WAKE_REASON_PREFIX,
   revokeLiveSubagentOwnerWake,
 } from "../../infra/heartbeat-owner-wake-grants.js";
 import { requestHeartbeat } from "../../infra/heartbeat-wake.js";
@@ -39,7 +40,7 @@ export function requestLiveSubagentOwnerWakeForPlugin(
   if (!entry) {
     return { ok: false, reason: "session-not-found" };
   }
-  if (!isLiveSubagentSessionEntry(entry)) {
+  if (!isLiveSubagentSession(sessionKey, entry)) {
     return { ok: false, reason: "session-ended" };
   }
   grantLiveSubagentOwnerWake({ pluginId, sessionKey });
@@ -48,7 +49,7 @@ export function requestLiveSubagentOwnerWakeForPlugin(
       source: "hook",
       intent: "immediate",
       // Plugin-supplied text never reaches the policy reason; the producer id does.
-      reason: `hook:plugin-owner-wake:${pluginId}`,
+      reason: `${OWNER_WAKE_REASON_PREFIX}${pluginId}`,
       agentId,
       sessionKey,
       heartbeat: { target: "none" },

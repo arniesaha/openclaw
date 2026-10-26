@@ -1,9 +1,12 @@
 // Short-lived grants that let a contract-gated plugin wake a live subagent session.
 // Only the plugin runtime facade may create grants; ordinary heartbeats never do.
 import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/string-coerce";
-import { isTerminalSessionStatus, type SessionEntry } from "../config/sessions/types.js";
+import { isSubagentSessionRunActive } from "../agents/subagents/registry/subagent-registry-read.js";
+import type { SessionEntry } from "../config/sessions/types.js";
 
 export const LIVE_SUBAGENT_OWNER_WAKE_GRANT_TTL_MS = 2 * 60_000;
+
+export const OWNER_WAKE_REASON_PREFIX = "hook:plugin-owner-wake:";
 
 const grants = new Map<string, { pluginId: string; expiresAt: number }>();
 
@@ -11,13 +14,16 @@ function grantKey(sessionKey: string): string {
   return normalizeLowercaseStringOrEmpty(sessionKey);
 }
 
-/** A subagent session is live only while its row exists and no run has ended or failed. */
-export function isLiveSubagentSessionEntry(
-  entry: Pick<SessionEntry, "endedAt" | "status"> | undefined,
+/**
+ * A subagent owner is live only while its row exists and the registry still owns an
+ * unended run for it. Per-run row fields (endedAt/status) alone cannot tell a finished
+ * run from a resumable owner, so the process-local registry decides.
+ */
+export function isLiveSubagentSession(
+  sessionKey: string,
+  entry: Pick<SessionEntry, "sessionId"> | undefined,
 ): boolean {
-  return (
-    entry !== undefined && entry.endedAt === undefined && !isTerminalSessionStatus(entry.status)
-  );
+  return entry !== undefined && isSubagentSessionRunActive(sessionKey);
 }
 
 export function grantLiveSubagentOwnerWake(params: {

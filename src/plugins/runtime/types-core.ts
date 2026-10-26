@@ -23,7 +23,7 @@ type RuntimeRequestHeartbeatNowOptions = Omit<RuntimeRequestHeartbeatOptions, "s
   Partial<Pick<RuntimeRequestHeartbeatOptions, "source" | "intent">>;
 
 export type RequestLiveSubagentOwnerWakeOptions = {
-  /** Existing subagent session key (`agent:<id>:subagent:...`) owned by the caller. */
+  /** Existing subagent session key (`agent:<id>:subagent:...`); the contract is a broad trust grant, not per-spawn ownership. */
   sessionKey: string;
 };
 
