@@ -40,7 +40,12 @@ Restarting the gateway interrupts any active Nix session and any Telegram bot lo
 
 **Swap order: stop, swap, start.** Lazily-loaded chunks have hashed names. Swapping the build dirs while the old process is still running, then `restart`, makes its shutdown hooks fail with `Cannot find module …/dist/…` (transcript-capture shutdown, 2026-10-24). Stage into `<dir>.new` beside each live dir (same depth keeps relative plugin links valid), then `systemctl --user stop`, rename `<dir>`→`<dir>.old` and `<dir>.new`→`<dir>` for all 19, `systemctl --user start`. The NVMe drop-in's `ExecStartPre` can hold startup for up to 16 min; `ready` took ~85 s on 2026-10-24.
 
-### Current state (2026-10-24): v2026.9.9 + optional-tool drain fix
+### Current state (2026-10-26): v2026.9.9 + owner wake for live subagents (#16, #17)
+
+- Serving **`4d7db6cdd47`** on `upgrade/v2026.9.9` (#16 contract-gated owner wake, #17 runtime-mock test fix). Build ID `2026.9.9-4d7db6cdd47b-2026-10-26T16-26-12.529Z`; built on the Mac Studio, restarted 2026-10-26 09:34 PDT, listening ~75 s later. No schema changes.
+- Rollback: `~/openclaw-dist-39dc39b-20261026-093340/` (all 19 dirs), plus `<dir>.old` in the checkout. The previous `.old` set (157d653) moved to `~/openclaw-dist-157d653-checkout-old-20261026-093340/`.
+
+### Previous state (2026-10-24): v2026.9.9 + optional-tool drain fix
 
 - Serving **`39dc39b5091`** on `upgrade/v2026.9.9` (#14 drain-admission fix, plus #15's type fix on top). Build ID `2026.9.9-39dc39b50915-2026-10-24T17-18-52.680Z`; restarted 2026-10-24 10:30 PDT. Schemas unchanged (state 19 / agent 24), no migration.
 - Rollback: `~/openclaw-dist-157d653-20261024-101447/` (all 19 dirs of the previous build), plus `<dir>.old` in the checkout. Code-only rollback is schema-safe for this hop. Failed `/update` evidence: `~/openclaw-update-evidence-1e91a929/`.
